@@ -263,8 +263,7 @@ class MainActivity : Activity() {
             }
         }
     }
-
-    private fun authenticate(appId: String, appSecret: String, email: String, pass: String): String? {
+private fun authenticate(appId: String, appSecret: String, email: String, pass: String, onError: (String) -> Unit): String? {
         return try {
             val json = JsonObject().apply {
                 addProperty("appId", appId)
@@ -279,17 +278,29 @@ class MainActivity : Activity() {
                 .build()
 
             client.newCall(request).execute().use { response ->
-                val responseData = response.body?.string() ?: return null
-                val jsonRes = JsonParser.parseString(responseData).asJsonObject
-                if (jsonRes.get("code")?.asInt == 0) {
-                    jsonRes.getAsJsonObject("data")?.get("accessToken")?.asString
-                } else null
+                val responseData = response.body?.string() ?: "Empty Response"
+                
+                if (response.isSuccessful) {
+                    val jsonRes = JsonParser.parseString(responseData).asJsonObject
+                    val code = jsonRes.get("code")?.asInt ?: -1
+                    if (code == 0) {
+                        jsonRes.getAsJsonObject("data")?.get("accessToken")?.asString
+                    } else {
+                        val msg = jsonRes.get("msg")?.asString ?: "Unknown error"
+                        onError("Deye Error ($code): $msg")
+                        null
+                    }
+                } else {
+                    onError("HTTP Error: ${response.code}")
+                    null
+                }
             }
         } catch (e: Exception) {
+            onError("Network Exception: ${e.localizedMessage}")
             null
         }
-    }
-
+}
+    get("acces
     private fun checkStationStatus(token: String): Boolean? {
         return try {
             val request = Request.Builder()
