@@ -50,7 +50,7 @@ class MainActivity : Activity() {
         }
 
         val rootLayout = FrameLayout(this).apply {
-            setBackgroundColor(Color.parseColor("#F4F6F9"))
+            setBackgroundColor(Color.parseColor("#121212"))
         }
 
         setupLayout = createSetupView()
@@ -78,42 +78,51 @@ class MainActivity : Activity() {
             orientation = LinearLayout.VERTICAL
             setPadding(60, 80, 60, 80)
             gravity = Gravity.CENTER_HORIZONTAL
+            setBackgroundColor(Color.parseColor("#121212"))
 
-            val title = TextView(context).apply {
+            val title = TextView(this.context).apply {
                 text = "Deye Cloud Настройка"
                 textSize = 22f
                 setTypeface(null, Typeface.BOLD)
-                setTextColor(Color.parseColor("#1F2937"))
+                setTextColor(Color.WHITE)
                 setPadding(0, 0, 0, 40)
             }
             addView(title)
 
-            val appIdInput = EditText(context).apply {
+            val appIdInput = EditText(this.context).apply {
                 hint = "App ID"
+                setHintTextColor(Color.GRAY)
+                setTextColor(Color.WHITE)
                 setText(prefs.getString("app_id", ""))
                 setPadding(30, 30, 30, 30)
             }
-            val appSecretInput = EditText(context).apply {
+            val appSecretInput = EditText(this.context).apply {
                 hint = "App Secret"
+                setHintTextColor(Color.GRAY)
+                setTextColor(Color.WHITE)
                 setText(prefs.getString("app_secret", ""))
                 setPadding(30, 30, 30, 30)
             }
-            val emailInput = EditText(context).apply {
+            val emailInput = EditText(this.context).apply {
                 hint = "Email Deye Cloud"
+                setHintTextColor(Color.GRAY)
+                setTextColor(Color.WHITE)
                 setText(prefs.getString("email", ""))
                 setPadding(30, 30, 30, 30)
             }
-            val passInput = EditText(context).apply {
+            val passInput = EditText(this.context).apply {
                 hint = "Пароль Deye Cloud"
+                setHintTextColor(Color.GRAY)
+                setTextColor(Color.WHITE)
                 inputType = android.text.InputType.TYPE_CLASS_TEXT or android.text.InputType.TYPE_TEXT_VARIATION_PASSWORD
                 setText(prefs.getString("password", ""))
                 setPadding(30, 30, 30, 30)
             }
 
-            val saveBtn = Button(context).apply {
+            val saveBtn = Button(this.context).apply {
                 text = "Сохранить и запустить"
-                setBackgroundColor(Color.parseColor("#2563EB"))
-                setTextColor(Color.WHITE)
+                setBackgroundColor(Color.parseColor("#BB86FC"))
+                setTextColor(Color.BLACK)
                 setOnClickListener {
                     val appId = appIdInput.text.toString().trim()
                     val appSecret = appSecretInput.text.toString().trim()
@@ -130,7 +139,7 @@ class MainActivity : Activity() {
                         scheduleWorker()
                         showDashboard()
                     } else {
-                        Toast.makeText(context, "Заполните все 4 поля!", Toast.LENGTH_SHORT).show()
+                        Toast.makeText(this.context, "Заполните все 4 поля!", Toast.LENGTH_SHORT).show()
                     }
                 }
             }
@@ -139,7 +148,7 @@ class MainActivity : Activity() {
             addView(appSecretInput)
             addView(emailInput)
             addView(passInput)
-            addView(Space(context).apply { minimumHeight = 30 })
+            addView(Space(this.context).apply { minimumHeight = 30 })
             addView(saveBtn)
         }
     }
@@ -149,37 +158,37 @@ class MainActivity : Activity() {
             orientation = LinearLayout.VERTICAL
             setPadding(50, 60, 50, 60)
             gravity = Gravity.CENTER_HORIZONTAL
+            setBackgroundColor(Color.parseColor("#121212"))
 
-            val title = TextView(context).apply {
+            val title = TextView(this.context).apply {
                 text = "Solar Monitor Deye"
-                textSize = 20f
+                textSize = 22f
                 setTypeface(null, Typeface.BOLD)
-                setTextColor(Color.parseColor("#4B5563"))
-                setPadding(0, 0, 0, 40)
+                setTextColor(Color.WHITE)
+                setPadding(0, 0, 0, 50)
             }
             addView(title)
 
-            // Статусная карточка
-            statusCard = LinearLayout(context).apply {
+            statusCard = LinearLayout(this.context).apply {
                 orientation = LinearLayout.VERTICAL
                 setPadding(60, 60, 60, 60)
                 gravity = Gravity.CENTER
-                background = createCardBackground("#E5E7EB")
+                background = createCardBackground("#1E1E1E")
             }
 
-            statusTitle = TextView(context).apply {
+            statusTitle = TextView(this.context).apply {
                 text = "ПРОВЕРКА..."
-                textSize = 22f
+                textSize = 20f
                 setTypeface(null, Typeface.BOLD)
-                setTextColor(Color.parseColor("#374151"))
+                setTextColor(Color.LTGRAY)
                 gravity = Gravity.CENTER
             }
 
-            statusSubtext = TextView(context).apply {
-                text = "Подключение к Deye Cloud"
+            statusSubtext = TextView(this.context).apply {
+                text = "Запрос к Deye Cloud..."
                 textSize = 14f
-                setTextColor(Color.parseColor("#4B5563"))
-                setPadding(0, 10, 0, 0)
+                setTextColor(Color.GRAY)
+                setPadding(0, 15, 0, 0)
                 gravity = Gravity.CENTER
             }
 
@@ -187,26 +196,26 @@ class MainActivity : Activity() {
             statusCard.addView(statusSubtext)
             addView(statusCard)
 
-            lastUpdateText = TextView(context).apply {
+            lastUpdateText = TextView(this.context).apply {
                 text = "Обновлено: --:--:--"
                 textSize = 13f
-                setTextColor(Color.parseColor("#9CA3AF"))
-                setPadding(0, 25, 0, 40)
+                setTextColor(Color.parseColor("#888888"))
+                setPadding(0, 30, 0, 40)
             }
             addView(lastUpdateText)
 
-            refreshBtn = Button(context).apply {
-                text = "🔄 Обновить статус"
-                setBackgroundColor(Color.parseColor("#2563EB"))
-                setTextColor(Color.WHITE)
+            refreshBtn = Button(this.context).apply {
+                text = "🔄 ОБНОВИТЬ СТАТУС"
+                setBackgroundColor(Color.parseColor("#BB86FC"))
+                setTextColor(Color.BLACK)
                 setOnClickListener { fetchStatus() }
             }
             addView(refreshBtn)
 
-            val settingsBtn = Button(context).apply {
+            val settingsBtn = Button(this.context).apply {
                 text = "⚙️ Настройки аккаунта"
                 setBackgroundColor(Color.TRANSPARENT)
-                setTextColor(Color.parseColor("#6B7280"))
+                setTextColor(Color.parseColor("#A0A0A0"))
                 setOnClickListener { showSetup() }
             }
             addView(settingsBtn)
@@ -226,9 +235,9 @@ class MainActivity : Activity() {
 
     private fun fetchStatus() {
         statusTitle.text = "ЗАГРУЗКА..."
-        statusCard.background = createCardBackground("#FEF3C7") // Желтый
-        statusTitle.setTextColor(Color.parseColor("#92400E"))
-        statusSubtext.text = "Запрос к Deye Cloud API"
+        statusCard.background = createCardBackground("#2D2B1E")
+        statusTitle.setTextColor(Color.parseColor("#FBBF24"))
+        statusSubtext.text = "Запрос к Deye Cloud API..."
 
         thread {
             val prefs = getSharedPreferences("deye_prefs", Context.MODE_PRIVATE)
@@ -237,33 +246,35 @@ class MainActivity : Activity() {
             val email = prefs.getString("email", "") ?: ""
             val password = prefs.getString("password", "") ?: ""
 
-            val token = authenticate(appId, appSecret, email, password)
-            val isOnline = if (token != null) checkStationStatus(token) else null
+            var errorDetail = ""
+            val token = authenticate(appId, appSecret, email, password) { err -> errorDetail = err }
+            val isOnline = if (token != null) checkStationStatus(token) { err -> errorDetail = err } else null
 
             runOnUiThread {
                 val time = SimpleDateFormat("HH:mm:ss", Locale.getDefault()).format(Date())
                 lastUpdateText.text = "Обновлено в $time"
 
                 if (isOnline == true) {
-                    statusCard.background = createCardBackground("#D1FAE5") // Зеленый
+                    statusCard.background = createCardBackground("#064E3B")
                     statusTitle.text = "🟢 СЕТЬ В НОРМЕ"
-                    statusTitle.setTextColor(Color.parseColor("#065F46"))
+                    statusTitle.setTextColor(Color.parseColor("#A7F3D0"))
                     statusSubtext.text = "Инвертор в сети / Питание подается"
                 } else if (isOnline == false) {
-                    statusCard.background = createCardBackground("#FEE2E2") // Красный
+                    statusCard.background = createCardBackground("#7F1D1D")
                     statusTitle.text = "🔴 НЕТ СЕТИ / ОТКЛЮЧЕНИЕ"
-                    statusTitle.setTextColor(Color.parseColor("#991B1B"))
+                    statusTitle.setTextColor(Color.parseColor("#FECACA"))
                     statusSubtext.text = "Станция оффлайн или пропал свет"
                 } else {
-                    statusCard.background = createCardBackground("#F3F4F6") // Серый
+                    statusCard.background = createCardBackground("#1F2937")
                     statusTitle.text = "⚠️ ОШИБКА СВЯЗИ"
-                    statusTitle.setTextColor(Color.parseColor("#374151"))
-                    statusSubtext.text = "Проверьте App ID / Secret или интернет"
+                    statusTitle.setTextColor(Color.parseColor("#F3F4F6"))
+                    statusSubtext.text = if (errorDetail.isNotEmpty()) errorDetail else "Проверьте данные или интернет"
                 }
             }
         }
     }
-private fun authenticate(appId: String, appSecret: String, email: String, pass: String, onError: (String) -> Unit): String? {
+
+    private fun authenticate(appId: String, appSecret: String, email: String, pass: String, onError: (String) -> Unit): String? {
         return try {
             val json = JsonObject().apply {
                 addProperty("appId", appId)
@@ -278,8 +289,7 @@ private fun authenticate(appId: String, appSecret: String, email: String, pass: 
                 .build()
 
             client.newCall(request).execute().use { response ->
-                val responseData = response.body?.string() ?: "Empty Response"
-                
+                val responseData = response.body?.string() ?: ""
                 if (response.isSuccessful) {
                     val jsonRes = JsonParser.parseString(responseData).asJsonObject
                     val code = jsonRes.get("code")?.asInt ?: -1
@@ -296,12 +306,12 @@ private fun authenticate(appId: String, appSecret: String, email: String, pass: 
                 }
             }
         } catch (e: Exception) {
-            onError("Network Exception: ${e.localizedMessage}")
+            onError("Сеть: ${e.localizedMessage}")
             null
         }
-}
-    get("acces
-    private fun checkStationStatus(token: String): Boolean? {
+    }
+
+    private fun checkStationStatus(token: String, onError: (String) -> Unit): Boolean? {
         return try {
             val request = Request.Builder()
                 .url("https://openapi.deyecloud.com/v1.0/station/list")
@@ -310,18 +320,30 @@ private fun authenticate(appId: String, appSecret: String, email: String, pass: 
                 .build()
 
             client.newCall(request).execute().use { response ->
-                val responseData = response.body?.string() ?: return null
-                val jsonRes = JsonParser.parseString(responseData).asJsonObject
-                if (jsonRes.get("code")?.asInt == 0) {
-                    val list = jsonRes.getAsJsonArray("data")
-                    if (list != null && list.size() > 0) {
-                        val station = list.get(0).asJsonObject
-                        val status = station.get("status")?.asInt ?: 2
-                        status == 1
-                    } else null
-                } else null
+                val responseData = response.body?.string() ?: ""
+                if (response.isSuccessful) {
+                    val jsonRes = JsonParser.parseString(responseData).asJsonObject
+                    if (jsonRes.get("code")?.asInt == 0) {
+                        val list = jsonRes.getAsJsonArray("data")
+                        if (list != null && list.size() > 0) {
+                            val station = list.get(0).asJsonObject
+                            val status = station.get("status")?.asInt ?: 2
+                            status == 1
+                        } else {
+                            onError("Список станций пуст")
+                            null
+                        }
+                    } else {
+                        onError("Ошибка получения станций")
+                        null
+                    }
+                } else {
+                    onError("HTTP Error: ${response.code}")
+                    null
+                }
             }
         } catch (e: Exception) {
+            onError("Ошибка сети при проверке станции")
             null
         }
     }
@@ -329,7 +351,7 @@ private fun authenticate(appId: String, appSecret: String, email: String, pass: 
     private fun createCardBackground(colorHex: String): GradientDrawable {
         return GradientDrawable().apply {
             setColor(Color.parseColor(colorHex))
-            cornerRadius = 30f
+            cornerRadius = 24f
         }
     }
 
@@ -341,4 +363,4 @@ private fun authenticate(appId: String, appSecret: String, email: String, pass: 
             workRequest
         )
     }
-}
+} 
