@@ -10,14 +10,14 @@
         android:label="Solar Monitor Deye"
         android:allowBackup="true"
         android:supportsRtl="true"
-        tools:replace="android:allowBackup,android:supportsRtl,android:appComponentFactory">
+        tools:replace="android:allowBackup,android:supportsRtl">
 
         <activity
             android:name=".MainActivity"
             android:exported="true">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
-                <category android:category="android.intent.category.LAUNCHER" />
+                <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
 
