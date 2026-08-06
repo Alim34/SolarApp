@@ -1,12 +1,16 @@
 <?xml version="1.0" encoding="utf-8"?>
-<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
 
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
 
     <application
-        android:label="Solar Monitor Deye">
+        android:label="Solar Monitor Deye"
+        android:allowBackup="true"
+        android:supportsRtl="true"
+        tools:replace="android:allowBackup,android:supportsRtl">
 
         <activity
             android:name=".MainActivity"
