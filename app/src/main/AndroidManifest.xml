@@ -10,6 +10,7 @@
         android:label="Solar Monitor Deye"
         android:allowBackup="true"
         android:supportsRtl="true"
+        android:usesCleartextTraffic="true"
         tools:replace="android:allowBackup,android:supportsRtl">
 
         <activity
