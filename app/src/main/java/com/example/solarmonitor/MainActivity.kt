@@ -41,13 +41,14 @@ class MainActivity : Activity() {
 
     private lateinit var setupLayout: LinearLayout
     private lateinit var dashboardLayout: LinearLayout
+    private lateinit var stationNameTitle: TextView // Сюда будем выводить имя станции
     private lateinit var statusCard: LinearLayout
     private lateinit var statusTitle: TextView
     private lateinit var statusSubtext: TextView
     private lateinit var lastUpdateText: TextView
     private lateinit var refreshBtn: Button
 
-    data class CheckResult(val isGridOn: Boolean, val titleText: String, val details: String)
+    data class CheckResult(val isGridOn: Boolean, val stationName: String, val titleText: String, val details: String)
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -140,12 +141,15 @@ class MainActivity : Activity() {
             setPadding(50, 60, 50, 60)
             gravity = Gravity.CENTER_HORIZONTAL
 
-            addView(TextView(this.context).apply {
-                text = "Solar Monitor Deye"
-                textSize = 22f
+            stationNameTitle = TextView(this.context).apply {
+                text = "Загрузка..."
+                textSize = 20f
+                setTypeface(null, Typeface.BOLD)
                 setTextColor(Color.WHITE)
                 setPadding(0, 0, 0, 40)
-            })
+                gravity = Gravity.CENTER
+            }
+            addView(stationNameTitle)
 
             statusCard = LinearLayout(this.context).apply {
                 orientation = LinearLayout.VERTICAL
@@ -162,12 +166,11 @@ class MainActivity : Activity() {
             }
 
             statusSubtext = TextView(this.context).apply {
-                text = "Загрузка..."
+                text = "..."
                 textSize = 15f
                 setPadding(0, 25, 0, 0)
                 gravity = Gravity.CENTER
                 setTextColor(Color.LTGRAY)
-                // Делаем межстрочный интервал побольше для читаемости
                 setLineSpacing(10f, 1.2f)
             }
 
@@ -229,11 +232,13 @@ class MainActivity : Activity() {
                 lastUpdateText.text = "Обновлено в ${SimpleDateFormat("HH:mm:ss", Locale.getDefault()).format(Date())}"
                 
                 if (result != null) {
+                    stationNameTitle.text = result.stationName
                     statusCard.background = createCardBackground(if (result.isGridOn) "#064E3B" else "#7F1D1D")
                     statusTitle.text = result.titleText
                     statusTitle.setTextColor(if (result.isGridOn) Color.parseColor("#A7F3D0") else Color.parseColor("#FECACA"))
                     statusSubtext.text = result.details
                 } else {
+                    stationNameTitle.text = "Solar Monitor Deye"
                     statusTitle.text = "🔴 ОШИБКА ДАННЫХ"
                     statusTitle.setTextColor(Color.parseColor("#FECACA"))
                     statusSubtext.text = "Не удалось подключиться к серверу Deye."
@@ -276,7 +281,7 @@ class MainActivity : Activity() {
                 .build()
 
             var stationId: Long? = null
-            var stationName = "Deye Station"
+            var stationName = "Моя станция"
 
             client.newCall(listReq).execute().use { response ->
                 val res = JsonParser.parseString(response.body?.string() ?: "").asJsonObject
@@ -284,7 +289,7 @@ class MainActivity : Activity() {
                 if (list != null && list.size() > 0) {
                     val st = list[0].asJsonObject
                     stationId = st.get("id")?.asLong ?: st.get("stationId")?.asLong
-                    stationName = st.get("name")?.asString ?: "Deye Station"
+                    stationName = st.get("name")?.asString ?: "Моя станция"
                 }
             }
 
@@ -301,16 +306,13 @@ class MainActivity : Activity() {
                 val res = JsonParser.parseString(response.body?.string() ?: "").asJsonObject
                 val data = if (res.has("data") && res.get("data").isJsonObject) res.getAsJsonObject("data") else res
 
-                // Вытаскиваем все найденные нами ключи
                 val wirePower = parseDouble(data, "wirePower") ?: 0.0
                 val conPower = parseDouble(data, "consumptionPower") ?: 0.0
                 val genPower = parseDouble(data, "generationPower") ?: 0.0
                 val batPower = parseDouble(data, "batteryPower") ?: 0.0
                 val batSoc = parseDouble(data, "batterySOC") ?: 0.0
 
-                // Если мощность на проводах > 2 Вт (модуль числа, т.к. может отдавать в сеть с минусом), считаем сеть активной
                 val isGridActive = abs(wirePower) > 2.0
-
                 val statusTitleText = if (isGridActive) "🟢 СЕТЬ В НОРМЕ" else "🔴 СЕТЬ ОТКЛЮЧЕНА"
 
                 val detailsText = buildString {
@@ -320,7 +322,7 @@ class MainActivity : Activity() {
                     append("Батарея: ${batPower.toInt()} Вт (Заряд ${batSoc.toInt()}%)")
                 }
 
-                CheckResult(isGridActive, statusTitleText, detailsText)
+                CheckResult(isGridActive, stationName, statusTitleText, detailsText)
             }
         } catch (e: Exception) {
             null
@@ -341,16 +343,13 @@ class MainActivity : Activity() {
     }
 
     private fun scheduleWorker() {
-        // Проверяем, существует ли класс DeyeCloudWorker в проекте
         try {
             WorkManager.getInstance(this).enqueueUniquePeriodicWork(
                 "Deye",
                 ExistingPeriodicWorkPolicy.KEEP,
                 PeriodicWorkRequestBuilder<DeyeCloudWorker>(15, TimeUnit.MINUTES).build()
             )
-        } catch (e: NoClassDefFoundError) {
-            // Если воркера нет, просто игнорируем, чтобы не крашить приложение
-        }
+        } catch (e: NoClassDefFoundError) { }
     }
 
     private fun String.toSha256() = MessageDigest.getInstance("SHA-256")
