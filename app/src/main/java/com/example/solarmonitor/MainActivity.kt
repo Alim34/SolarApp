@@ -28,6 +28,7 @@ import java.text.SimpleDateFormat
 import java.util.*
 import java.util.concurrent.TimeUnit
 import kotlin.concurrent.thread
+import kotlin.math.abs
 
 class MainActivity : Activity() {
 
@@ -76,19 +77,31 @@ class MainActivity : Activity() {
         val prefs = getSharedPreferences("deye_prefs", Context.MODE_PRIVATE)
         return LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            setPadding(60, 80, 60, 80)
+            setPadding(50, 60, 50, 60)
             gravity = Gravity.CENTER_HORIZONTAL
             setBackgroundColor(Color.parseColor("#121212"))
 
-            val title = TextView(this.context).apply { text = "Deye Cloud Настройка"; textSize = 22f; setTypeface(null, Typeface.BOLD); setTextColor(Color.WHITE); setPadding(0, 0, 0, 40) }
-            val appIdInput = EditText(this.context).apply { hint = "App ID"; setText(prefs.getString("app_id", "")); setTextColor(Color.WHITE); setPadding(30, 30, 30, 30) }
-            val appSecretInput = EditText(this.context).apply { hint = "App Secret"; setText(prefs.getString("app_secret", "")); setTextColor(Color.WHITE); setPadding(30, 30, 30, 30) }
-            val emailInput = EditText(this.context).apply { hint = "Email"; setText(prefs.getString("email", "")); setTextColor(Color.WHITE); setPadding(30, 30, 30, 30) }
-            val passInput = EditText(this.context).apply { hint = "Пароль"; setText(prefs.getString("password", "")); setTextColor(Color.WHITE); setPadding(30, 30, 30, 30) }
+            val title = TextView(this.context).apply {
+                text = "Настройки Deye Cloud"
+                textSize = 22f
+                setTypeface(null, Typeface.BOLD)
+                setTextColor(Color.WHITE)
+                setPadding(0, 0, 0, 30)
+            }
+            addView(title)
+
+            val appIdInput = createInputField("App ID", prefs.getString("app_id", ""))
+            val appSecretInput = createInputField("App Secret", prefs.getString("app_secret", ""))
+            val emailInput = createInputField("Email", prefs.getString("email", ""))
+            val passInput = createInputField("Пароль", prefs.getString("password", ""), isPassword = true)
+
             val saveBtn = Button(this.context).apply {
                 text = "Сохранить и запустить"
                 setBackgroundColor(Color.parseColor("#BB86FC"))
                 setTextColor(Color.BLACK)
+                textSize = 16f
+                setTypeface(null, Typeface.BOLD)
+                setPadding(20, 25, 20, 25)
                 setOnClickListener {
                     prefs.edit()
                         .putString("app_id", appIdInput.text.toString().trim())
@@ -100,8 +113,43 @@ class MainActivity : Activity() {
                     showDashboard()
                 }
             }
-            addView(title); addView(appIdInput); addView(appSecretInput); addView(emailInput); addView(passInput); addView(Space(this.context).apply { minimumHeight = 30 }); addView(saveBtn)
+            
+            addView(Space(this.context).apply { minimumHeight = 20 })
+            addView(saveBtn)
         }
+    }
+
+    private fun LinearLayout.createInputField(label: String, initialValue: String?, isPassword: Boolean = false): EditText {
+        val container = LinearLayout(this.context).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(0, 10, 0, 15)
+        }
+        val labelView = TextView(this.context).apply {
+            text = label
+            textSize = 14f
+            setTextColor(Color.parseColor("#BB86FC"))
+            setPadding(5, 0, 0, 8)
+        }
+        val editText = EditText(this.context).apply {
+            hint = "Введите $label"
+            setHintTextColor(Color.parseColor("#777777"))
+            setText(initialValue ?: "")
+            setTextColor(Color.WHITE)
+            textSize = 15f
+            setPadding(30, 25, 30, 25)
+            background = GradientDrawable().apply {
+                setColor(Color.parseColor("#1E1E1E"))
+                setStroke(2, Color.parseColor("#333333"))
+                cornerRadius = 16f
+            }
+            if (isPassword) {
+                inputType = android.text.InputType.TYPE_CLASS_TEXT or android.text.InputType.TYPE_TEXT_VARIATION_PASSWORD
+            }
+        }
+        container.addView(labelView)
+        container.addView(editText)
+        this.addView(container)
+        return editText
     }
 
     private fun createDashboardView(): LinearLayout {
@@ -111,30 +159,32 @@ class MainActivity : Activity() {
             gravity = Gravity.CENTER_HORIZONTAL
             setBackgroundColor(Color.parseColor("#121212"))
 
-            val title = TextView(this.context).apply { text = "Solar Monitor Deye"; textSize = 22f; setTypeface(null, Typeface.BOLD); setTextColor(Color.WHITE); setPadding(0, 0, 0, 50) }
+            val title = TextView(this.context).apply { text = "Solar Monitor Deye"; textSize = 22f; setTypeface(null, Typeface.BOLD); setTextColor(Color.WHITE); setPadding(0, 0, 0, 40) }
             addView(title)
 
             statusCard = LinearLayout(this.context).apply {
                 orientation = LinearLayout.VERTICAL
-                setPadding(60, 60, 60, 60)
+                setPadding(50, 50, 50, 50)
                 gravity = Gravity.CENTER
                 background = createCardBackground("#1E1E1E")
             }
 
             statusTitle = TextView(this.context).apply { text = "ПРОВЕРКА..."; textSize = 20f; setTypeface(null, Typeface.BOLD); setTextColor(Color.LTGRAY); gravity = Gravity.CENTER }
-            statusSubtext = TextView(this.context).apply { text = "Запрос к Deye Cloud..."; textSize = 13f; setTextColor(Color.GRAY); setPadding(0, 15, 0, 0); gravity = Gravity.CENTER; maxLines = 10 }
+            statusSubtext = TextView(this.context).apply { text = "Запрос к Deye Cloud..."; textSize = 14f; setTextColor(Color.GRAY); setPadding(0, 15, 0, 0); gravity = Gravity.CENTER; maxLines = 10 }
 
             statusCard.addView(statusTitle)
             statusCard.addView(statusSubtext)
             addView(statusCard)
 
-            lastUpdateText = TextView(this.context).apply { text = "Обновлено: --:--:--"; textSize = 13f; setTextColor(Color.parseColor("#888888")); setPadding(0, 30, 0, 40) }
+            lastUpdateText = TextView(this.context).apply { text = "Обновлено: --:--:--"; textSize = 13f; setTextColor(Color.parseColor("#888888")); setPadding(0, 30, 0, 30) }
             addView(lastUpdateText)
 
             refreshBtn = Button(this.context).apply {
                 text = "🔄 ОБНОВИТЬ СТАТУС"
                 setBackgroundColor(Color.parseColor("#BB86FC"))
                 setTextColor(Color.BLACK)
+                textSize = 15f
+                setTypeface(null, Typeface.BOLD)
                 setOnClickListener { fetchStatus() }
             }
             addView(refreshBtn)
@@ -260,34 +310,27 @@ class MainActivity : Activity() {
                 val respStr = response.body?.string() ?: ""
                 if (response.isSuccessful) {
                     val res = JsonParser.parseString(respStr).asJsonObject
-                    val data = if (res.has("data")) res.getAsJsonObject("data") else res
+                    val data = if (res.has("data") && res.get("data").isJsonObject) res.getAsJsonObject("data") else res
 
-                    val gridPower = findDouble(data, "gridPower", "pGrid", "acPower", "gridPowerW", "purchasedPower")
-                    val gridVoltage = findDouble(data, "gridVoltage", "vGrid", "acVoltage", "gridVolts")
-                    val gridStatus = data.get("gridStatus")?.asInt ?: data.get("gridState")?.asInt
+                    val gridPower = parseDouble(data, "gridPower")
+                    val purchasePower = parseDouble(data, "purchasePower") ?: parseDouble(data, "purchasedPower")
+                    val genPower = parseDouble(data, "generationPower") ?: 0.0
+                    val conPower = parseDouble(data, "consumptionPower") ?: 0.0
 
-                    if (gridVoltage != null) {
-                        if (gridVoltage > 50.0) {
-                            CheckResult(true, "СЕТЬ В НОРМЕ", "Объект: $stationName\nНапряжение сети: ${gridVoltage.toInt()} В")
-                        } else {
-                            CheckResult(false, "СЕТЬ ОТКЛЮЧЕНА", "Объект: $stationName\nНапряжение сети: 0 В (АКБ/Солнце)")
-                        }
-                    } else if (gridPower != null) {
-                        if (gridPower > 5.0 || gridPower < -5.0) {
-                            CheckResult(true, "СЕТЬ В НОРМЕ", "Объект: $stationName\nМощность сети: ${gridPower.toInt()} Вт")
-                        } else {
-                            CheckResult(false, "СЕТЬ ОТКЛЮЧЕНА", "Объект: $stationName\nСеть не потребляется (0 Вт)")
-                        }
-                    } else if (gridStatus != null) {
-                        if (gridStatus == 1) {
-                            CheckResult(true, "СЕТЬ В НОРМЕ", "Объект: $stationName\nСтатус сети: Подключена")
-                        } else {
-                            CheckResult(false, "СЕТЬ ОТКЛЮЧЕНА", "Объект: $stationName\nСтатус сети: Отключена")
-                        }
-                    } else {
-                        val keys = data.keySet().take(8).joinToString(", ")
-                        CheckResult(false, "АНАЛИЗ ПАРАМЕТРОВ", "Объект: $stationName\nПараметры станции: $keys")
-                    }
+                    val activeGridPower = gridPower ?: purchasePower ?: 0.0
+                    val isGridActive = abs(activeGridPower) > 5.0
+
+                    val statusTitleText = if (isGridActive) "СЕТЬ В НОРМЕ" else "СЕТЬ ОТКЛЮЧЕНА (АКБ)"
+                    val gridText = if (isGridActive) "${activeGridPower.toInt()} Вт" else "0 Вт (Автономный режим)"
+
+                    val detailsText = StringBuilder().apply {
+                        append("Объект: $stationName\n")
+                        append("Мощность сети: $gridText\n")
+                        append("Нагрузка дома: ${conPower.toInt()} Вт\n")
+                        append("Солнце: ${genPower.toInt()} Вт")
+                    }.toString()
+
+                    CheckResult(isGridActive, statusTitleText, detailsText)
                 } else {
                     onError("Telemetry HTTP ${response.code}")
                     null
@@ -299,13 +342,16 @@ class MainActivity : Activity() {
         }
     }
 
-    private fun findDouble(obj: JsonObject, vararg keys: String): Double? {
-        for (k in keys) {
-            if (obj.has(k) && !obj.get(k).isJsonNull) {
-                return try { obj.get(k).asDouble } catch (e: Exception) { null }
-            }
+    private fun parseDouble(obj: JsonObject, key: String): Double? {
+        if (!obj.has(key)) return null
+        val elem = obj.get(key)
+        if (elem == null || elem.isJsonNull) return null
+        return try {
+            val str = elem.asString
+            str.toDoubleOrNull()
+        } catch (e: Exception) {
+            try { elem.asDouble } catch (ex: Exception) { null }
         }
-        return null
     }
 
     private fun createCardBackground(colorHex: String): GradientDrawable = GradientDrawable().apply { setColor(Color.parseColor(colorHex)); cornerRadius = 24f }
@@ -316,4 +362,4 @@ class MainActivity : Activity() {
     }
 
     private fun String.toSha256(): String = MessageDigest.getInstance("SHA-256").digest(this.toByteArray()).joinToString("") { "%02x".format(it) }
-}             
+}
