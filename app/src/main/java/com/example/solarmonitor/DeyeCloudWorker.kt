@@ -13,110 +13,139 @@ import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
+import java.security.MessageDigest
+import java.util.concurrent.TimeUnit
+import kotlin.math.abs
 
-class DeyeCloudWorker(context: Context, params: WorkerParameters) : Worker(context, params) {
+class DeyeCloudWorker(val context: Context, params: WorkerParameters) : Worker(context, params) {
 
-    private val client = OkHttpClient()
+    private val client = OkHttpClient.Builder()
+        .connectTimeout(20, TimeUnit.SECONDS)
+        .readTimeout(20, TimeUnit.SECONDS)
+        .build()
+
+    private val baseUrl = "https://eu1-developer.deyecloud.com/v1.0"
 
     override fun doWork(): Result {
-        val prefs = applicationContext.getSharedPreferences("deye_prefs", Context.MODE_PRIVATE)
+        val prefs = context.getSharedPreferences("deye_prefs", Context.MODE_PRIVATE)
         val appId = prefs.getString("app_id", "") ?: ""
-        val appSecret = prefs.getString("app_secret", "") ?: ""
+        val secret = prefs.getString("app_secret", "") ?: ""
         val email = prefs.getString("email", "") ?: ""
-        val password = prefs.getString("password", "") ?: ""
+        val pass = prefs.getString("password", "") ?: ""
 
-        if (appId.isEmpty() || appSecret.isEmpty() || email.isEmpty() || password.isEmpty()) {
-            return Result.failure()
-        }
+        if (appId.isEmpty() || secret.isEmpty()) return Result.success()
 
-        val token = authenticate(appId, appSecret, email, password) ?: return Result.retry()
-        val isGridActive = checkStationStatus(token) ?: return Result.retry()
+        val token = authenticate(appId, secret, email, pass) ?: return Result.retry()
+        val isGridActive = checkGridStatus(appId, token) ?: return Result.retry()
 
-        val lastState = prefs.getBoolean("last_grid_state", true)
-        if (isGridActive != lastState) {
-            sendNotification(isGridActive)
-            prefs.edit().putBoolean("last_grid_state", isGridActive).apply()
+        val wasGridOn = prefs.getBoolean("was_grid_on", true)
+
+        // Отправляем уведомление только если статус сети изменился
+        if (isGridActive != wasGridOn) {
+            if (!isGridActive) {
+                sendNotification("🔴 СВЕТ ОТКЛЮЧЕН!", "Городская сеть пропала. Дом работает от батареи.")
+            } else {
+                sendNotification("🟢 СВЕТ ВКЛЮЧИЛИ!", "Городская сеть снова активна.")
+            }
+            prefs.edit().putBoolean("was_grid_on", isGridActive).apply()
         }
 
         return Result.success()
     }
 
-    private fun authenticate(appId: String, appSecret: String, email: String, pass: String): String? {
+    private fun authenticate(appId: String, secret: String, email: String, pass: String): String? {
         return try {
             val json = JsonObject().apply {
-                addProperty("appId", appId)
-                addProperty("appSecret", appSecret)
+                addProperty("appSecret", secret)
                 addProperty("email", email)
-                addProperty("password", pass)
+                addProperty("password", pass.toSha256())
             }
-            val body = json.toString().toRequestBody("application/json".toMediaType())
-            val request = Request.Builder()
-                .url("https://openapi.deyecloud.com/v1.0/account/token")
-                .post(body)
+            val req = Request.Builder()
+                .url("$baseUrl/account/token?appId=$appId")
+                .post(json.toString().toRequestBody("application/json".toMediaType()))
                 .build()
 
-            client.newCall(request).execute().use { response ->
-                val responseData = response.body?.string() ?: return null
-                val jsonRes = JsonParser.parseString(responseData).asJsonObject
-                if (jsonRes.get("code")?.asInt == 0) {
-                    jsonRes.getAsJsonObject("data")?.get("accessToken")?.asString
-                } else null
+            client.newCall(req).execute().use { res ->
+                val bodyStr = res.body?.string() ?: ""
+                JsonParser.parseString(bodyStr).asJsonObject.get("accessToken")?.asString
             }
         } catch (e: Exception) {
             null
         }
     }
 
-    private fun checkStationStatus(token: String): Boolean? {
+    private fun checkGridStatus(appId: String, token: String): Boolean? {
         return try {
-            val request = Request.Builder()
-                .url("https://openapi.deyecloud.com/v1.0/station/list")
-                .addHeader("Authorization", "Bearer $token")
-                .get()
+            val listJson = JsonObject().apply {
+                addProperty("page", 1)
+                addProperty("size", 10)
+            }
+            val listReq = Request.Builder()
+                .url("$baseUrl/station/list")
+                .post(listJson.toString().toRequestBody("application/json".toMediaType()))
+                .addHeader("Authorization", "bearer $token")
                 .build()
 
-            client.newCall(request).execute().use { response ->
-                val responseData = response.body?.string() ?: return null
-                val jsonRes = JsonParser.parseString(responseData).asJsonObject
-                if (jsonRes.get("code")?.asInt == 0) {
-                    val list = jsonRes.getAsJsonArray("data")
-                    if (list != null && list.size() > 0) {
-                        val station = list.get(0).asJsonObject
-                        // status: 1 = Normal/Online, 2 = Offline/Fault
-                        val status = station.get("status")?.asInt ?: 2
-                        status == 1
-                    } else null
-                } else null
+            var stationId: Long? = null
+            client.newCall(listReq).execute().use { response ->
+                val res = JsonParser.parseString(response.body?.string() ?: "").asJsonObject
+                val list = res.getAsJsonArray("stationList") ?: res.getAsJsonObject("data")?.getAsJsonArray("list")
+                if (list != null && list.size() > 0) {
+                    val st = list[0].asJsonObject
+                    stationId = st.get("id")?.asLong ?: st.get("stationId")?.asLong
+                }
+            }
+
+            if (stationId == null) return null
+
+            val latestJson = JsonObject().apply { addProperty("stationId", stationId) }
+            val latestReq = Request.Builder()
+                .url("$baseUrl/station/latest?appId=$appId")
+                .post(latestJson.toString().toRequestBody("application/json".toMediaType()))
+                .addHeader("Authorization", "bearer $token")
+                .build()
+
+            client.newCall(latestReq).execute().use { response ->
+                val res = JsonParser.parseString(response.body?.string() ?: "").asJsonObject
+                val data = if (res.has("data") && res.get("data").isJsonObject) res.getAsJsonObject("data") else res
+                val wirePower = parseDouble(data, "wirePower") ?: 0.0
+                
+                abs(wirePower) > 2.0
             }
         } catch (e: Exception) {
             null
         }
     }
 
-    private fun sendNotification(isOnline: Boolean) {
-        val channelId = "deye_status_channel"
-        val notificationManager =
-            applicationContext.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+    private fun parseDouble(obj: JsonObject, key: String): Double? {
+        return try {
+            if (obj.has(key) && !obj.get(key).isJsonNull) obj.get(key).asDouble else null
+        } catch (e: Exception) {
+            null
+        }
+    }
+
+    private fun sendNotification(title: String, message: String) {
+        val manager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+        val channelId = "deye_grid_channel"
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            val channel = NotificationChannel(
-                channelId,
-                "Статус Deye Cloud",
-                NotificationManager.IMPORTANCE_HIGH
-            )
-            notificationManager.createNotificationChannel(channel)
+            val channel = NotificationChannel(channelId, "Мониторинг сети Deye", NotificationManager.IMPORTANCE_HIGH)
+            manager.createNotificationChannel(channel)
         }
 
-        val text = if (isOnline) "Питание от сети / Инвертор в сети" else "Внимание! Станция Deye не сеть / Отключена"
-
-        val notification = NotificationCompat.Builder(applicationContext, channelId)
-            .setSmallIcon(android.R.drawable.stat_sys_warning)
-            .setContentTitle("Deye Solar Monitor")
-            .setContentText(text)
+        val notification = NotificationCompat.Builder(context, channelId)
+            .setSmallIcon(android.R.drawable.ic_dialog_alert)
+            .setContentTitle(title)
+            .setContentText(message)
             .setPriority(NotificationCompat.PRIORITY_HIGH)
             .setAutoCancel(true)
             .build()
 
-        notificationManager.notify(1, notification)
+        manager.notify(1001, notification)
     }
+
+    private fun String.toSha256() = MessageDigest.getInstance("SHA-256")
+        .digest(this.toByteArray())
+        .joinToString("") { "%02x".format(it) }
 }
