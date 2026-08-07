@@ -196,6 +196,7 @@ class MainActivity : Activity() {
                 setTextColor(Color.GRAY)
                 setPadding(0, 15, 0, 0)
                 gravity = Gravity.CENTER
+                maxLines = 6
             }
 
             statusCard.addView(statusTitle)
@@ -247,10 +248,10 @@ class MainActivity : Activity() {
 
         thread {
             val prefs = getSharedPreferences("deye_prefs", Context.MODE_PRIVATE)
-            val appId = prefs.getString("app_id", "") ?: ""
-            val appSecret = prefs.getString("app_secret", "") ?: ""
-            val email = prefs.getString("email", "") ?: ""
-            val password = prefs.getString("password", "") ?: ""
+            val appId = (prefs.getString("app_id", "") ?: "").trim()
+            val appSecret = (prefs.getString("app_secret", "") ?: "").trim()
+            val email = (prefs.getString("email", "") ?: "").trim()
+            val password = (prefs.getString("password", "") ?: "").trim()
 
             var errorDetail = ""
             val token = authenticate(appId, appSecret, email, password) { err -> errorDetail = err }
@@ -292,6 +293,8 @@ class MainActivity : Activity() {
             val request = Request.Builder()
                 .url("$baseUrl/account/token?appId=$appId")
                 .post(body)
+                .addHeader("Accept", "application/json")
+                .addHeader("User-Agent", "Mozilla/5.0 (Android 13; Mobile)")
                 .build()
 
             client.newCall(request).execute().use { response ->
@@ -311,12 +314,14 @@ class MainActivity : Activity() {
                         null
                     }
                 } else {
-                    onError("HTTP Error: ${response.code}")
+                    val code = response.code
+                    val cleanError = responseData.replace("\n", " ").replace("\r", " ").take(100)
+                    onError("Auth $code: $cleanError")
                     null
                 }
             }
         } catch (e: Exception) {
-            onError("Проверьте, работает ли VPN")
+            onError("Auth Crash: ${e.localizedMessage}")
             null
         }
     }
@@ -330,8 +335,10 @@ class MainActivity : Activity() {
             val body = json.toString().toRequestBody("application/json".toMediaType())
             val request = Request.Builder()
                 .url("$baseUrl/station/list")
-                .addHeader("Authorization", "bearer $token")
                 .post(body)
+                .addHeader("Authorization", "bearer $token")
+                .addHeader("Accept", "application/json")
+                .addHeader("User-Agent", "Mozilla/5.0 (Android 13; Mobile)")
                 .build()
 
             client.newCall(request).execute().use { response ->
@@ -341,16 +348,19 @@ class MainActivity : Activity() {
                     if (jsonRes.get("success")?.asBoolean == true) {
                         true
                     } else {
-                        onError("Не удалось получить статус")
+                        val msg = jsonRes.get("msg")?.asString ?: "Не удалось получить статус"
+                        onError("Stat Error: $msg")
                         null
                     }
                 } else {
-                    onError("HTTP Error: ${response.code}")
+                    val code = response.code
+                    val cleanError = responseData.replace("\n", " ").replace("\r", " ").take(100)
+                    onError("Stat $code: $cleanError")
                     null
                 }
             }
         } catch (e: Exception) {
-            onError("Сбой VPN при проверке станции")
+            onError("Stat Crash: ${e.localizedMessage}")
             null
         }
     }
@@ -371,7 +381,6 @@ class MainActivity : Activity() {
         )
     }
 
-    // Хеширование строки в SHA-256 в нижнем регистре
     private fun String.toSha256(): String {
         val bytes = MessageDigest.getInstance("SHA-256").digest(this.toByteArray(Charsets.UTF_8))
         return bytes.joinToString("") { "%02x".format(it) }
