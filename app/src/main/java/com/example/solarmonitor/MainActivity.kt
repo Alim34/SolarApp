@@ -330,7 +330,7 @@ class MainActivity : Activity() {
         return try {
             val json = JsonObject().apply {
                 addProperty("page", 1)
-                addProperty("limit", 10)
+                addProperty("size", 10)
             }
             val body = json.toString().toRequestBody("application/json".toMediaType())
             val request = Request.Builder()
@@ -345,8 +345,23 @@ class MainActivity : Activity() {
                 val responseData = response.body?.string() ?: ""
                 if (response.isSuccessful) {
                     val jsonRes = JsonParser.parseString(responseData).asJsonObject
-                    if (jsonRes.get("success")?.asBoolean == true) {
-                        true
+                    val success = jsonRes.get("success")?.asBoolean ?: false
+                    if (success) {
+                        val stationList = jsonRes.getAsJsonArray("stationList")
+                            ?: jsonRes.getAsJsonObject("data")?.getAsJsonArray("list")
+                            ?: jsonRes.getAsJsonArray("list")
+
+                        if (stationList != null && stationList.size() > 0) {
+                            val firstStation = stationList[0].asJsonObject
+                            val status = firstStation.get("status")?.asInt
+                            if (status != null) {
+                                status == 1
+                            } else {
+                                true
+                            }
+                        } else {
+                            true
+                        }
                     } else {
                         val msg = jsonRes.get("msg")?.asString ?: "Не удалось получить статус"
                         onError("Stat Error: $msg")
