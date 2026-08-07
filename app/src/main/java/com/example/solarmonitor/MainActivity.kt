@@ -14,6 +14,9 @@ import android.view.View
 import android.widget.*
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
+import androidx.work.ExistingPeriodicWorkPolicy
+import androidx.work.PeriodicWorkRequestBuilder
+import androidx.work.WorkManager
 import com.google.gson.JsonObject
 import com.google.gson.JsonParser
 import okhttp3.MediaType.Companion.toMediaType
@@ -102,6 +105,7 @@ class MainActivity : Activity() {
                         .putString("email", emailInput.text.toString().trim())
                         .putString("password", passInput.text.toString().trim())
                         .apply()
+                    scheduleWorker()
                     showDashboard()
                 }
             }
@@ -157,21 +161,18 @@ class MainActivity : Activity() {
                 setTextColor(Color.WHITE)
             }
 
-            val scroll = ScrollView(this.context).apply {
-                layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, 600)
-                setPadding(0, 15, 0, 0)
-            }
-
             statusSubtext = TextView(this.context).apply {
                 text = "Загрузка..."
-                textSize = 12f
+                textSize = 15f
+                setPadding(0, 25, 0, 0)
                 gravity = Gravity.CENTER
                 setTextColor(Color.LTGRAY)
+                // Делаем межстрочный интервал побольше для читаемости
+                setLineSpacing(10f, 1.2f)
             }
 
-            scroll.addView(statusSubtext)
             statusCard.addView(statusTitle)
-            statusCard.addView(scroll)
+            statusCard.addView(statusSubtext)
             addView(statusCard)
 
             lastUpdateText = TextView(this.context).apply {
@@ -228,9 +229,9 @@ class MainActivity : Activity() {
                 lastUpdateText.text = "Обновлено в ${SimpleDateFormat("HH:mm:ss", Locale.getDefault()).format(Date())}"
                 
                 if (result != null) {
-                    statusCard.background = createCardBackground("#4B5563")
+                    statusCard.background = createCardBackground(if (result.isGridOn) "#064E3B" else "#7F1D1D")
                     statusTitle.text = result.titleText
-                    statusTitle.setTextColor(Color.WHITE)
+                    statusTitle.setTextColor(if (result.isGridOn) Color.parseColor("#A7F3D0") else Color.parseColor("#FECACA"))
                     statusSubtext.text = result.details
                 } else {
                     statusTitle.text = "🔴 ОШИБКА ДАННЫХ"
@@ -275,6 +276,7 @@ class MainActivity : Activity() {
                 .build()
 
             var stationId: Long? = null
+            var stationName = "Deye Station"
 
             client.newCall(listReq).execute().use { response ->
                 val res = JsonParser.parseString(response.body?.string() ?: "").asJsonObject
@@ -282,6 +284,7 @@ class MainActivity : Activity() {
                 if (list != null && list.size() > 0) {
                     val st = list[0].asJsonObject
                     stationId = st.get("id")?.asLong ?: st.get("stationId")?.asLong
+                    stationName = st.get("name")?.asString ?: "Deye Station"
                 }
             }
 
@@ -298,30 +301,26 @@ class MainActivity : Activity() {
                 val res = JsonParser.parseString(response.body?.string() ?: "").asJsonObject
                 val data = if (res.has("data") && res.get("data").isJsonObject) res.getAsJsonObject("data") else res
 
+                // Вытаскиваем все найденные нами ключи
+                val wirePower = parseDouble(data, "wirePower") ?: 0.0
                 val conPower = parseDouble(data, "consumptionPower") ?: 0.0
+                val genPower = parseDouble(data, "generationPower") ?: 0.0
+                val batPower = parseDouble(data, "batteryPower") ?: 0.0
+                val batSoc = parseDouble(data, "batterySOC") ?: 0.0
 
-                val debugInfo = StringBuilder()
-                for (entry in data.entrySet()) {
-                    try {
-                        val key = entry.key
-                        val element = entry.value
-                        if (element.isJsonPrimitive && element.asJsonPrimitive.isNumber) {
-                            val value = element.asDouble
-                            if (abs(value) > 1.0) {
-                                debugInfo.append("$key: ${value.toInt()}\n")
-                            }
-                        }
-                    } catch (e: Exception) { }
-                }
+                // Если мощность на проводах > 2 Вт (модуль числа, т.к. может отдавать в сеть с минусом), считаем сеть активной
+                val isGridActive = abs(wirePower) > 2.0
 
-                val statusTitleText = "🔍 РЕЖИМ ОТЛАДКИ"
+                val statusTitleText = if (isGridActive) "🟢 СЕТЬ В НОРМЕ" else "🔴 СЕТЬ ОТКЛЮЧЕНА"
+
                 val detailsText = buildString {
-                    append("Нагрузка: ${conPower.toInt()} Вт\n")
-                    append("--- СЫРЫЕ ДАННЫЕ СЕРВЕРА ---\n")
-                    append(debugInfo.toString())
+                    append("Городская сеть: ${wirePower.toInt()} Вт\n")
+                    append("Нагрузка дома: ${conPower.toInt()} Вт\n")
+                    append("Солнечные панели: ${genPower.toInt()} Вт\n")
+                    append("Батарея: ${batPower.toInt()} Вт (Заряд ${batSoc.toInt()}%)")
                 }
 
-                CheckResult(true, statusTitleText, detailsText)
+                CheckResult(isGridActive, statusTitleText, detailsText)
             }
         } catch (e: Exception) {
             null
@@ -339,6 +338,19 @@ class MainActivity : Activity() {
     private fun createCardBackground(hex: String) = GradientDrawable().apply {
         setColor(Color.parseColor(hex))
         cornerRadius = 24f
+    }
+
+    private fun scheduleWorker() {
+        // Проверяем, существует ли класс DeyeCloudWorker в проекте
+        try {
+            WorkManager.getInstance(this).enqueueUniquePeriodicWork(
+                "Deye",
+                ExistingPeriodicWorkPolicy.KEEP,
+                PeriodicWorkRequestBuilder<DeyeCloudWorker>(15, TimeUnit.MINUTES).build()
+            )
+        } catch (e: NoClassDefFoundError) {
+            // Если воркера нет, просто игнорируем, чтобы не крашить приложение
+        }
     }
 
     private fun String.toSha256() = MessageDigest.getInstance("SHA-256")
