@@ -23,6 +23,7 @@ import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
+import java.security.MessageDigest
 import java.text.SimpleDateFormat
 import java.util.*
 import java.util.concurrent.TimeUnit
@@ -30,7 +31,12 @@ import kotlin.concurrent.thread
 
 class MainActivity : Activity() {
 
-    private val client = OkHttpClient()
+    private val client = OkHttpClient.Builder()
+        .connectTimeout(15, TimeUnit.SECONDS)
+        .readTimeout(15, TimeUnit.SECONDS)
+        .build()
+
+    private val baseUrl = "https://eu1-developer.deyecloud.com/v1.0"
 
     private lateinit var setupLayout: LinearLayout
     private lateinit var dashboardLayout: LinearLayout
@@ -111,7 +117,7 @@ class MainActivity : Activity() {
                 setPadding(30, 30, 30, 30)
             }
             val passInput = EditText(this.context).apply {
-                hint = "Пароль Deye Cloud"
+                hint = "Обычный пароль Deye"
                 setHintTextColor(Color.GRAY)
                 setTextColor(Color.WHITE)
                 inputType = android.text.InputType.TYPE_CLASS_TEXT or android.text.InputType.TYPE_TEXT_VARIATION_PASSWORD
@@ -237,7 +243,7 @@ class MainActivity : Activity() {
         statusTitle.text = "ЗАГРУЗКА..."
         statusCard.background = createCardBackground("#2D2B1E")
         statusTitle.setTextColor(Color.parseColor("#FBBF24"))
-        statusSubtext.text = "Запрос к Deye Cloud API..."
+        statusSubtext.text = "Подключение через VPN..."
 
         thread {
             val prefs = getSharedPreferences("deye_prefs", Context.MODE_PRIVATE)
@@ -268,7 +274,7 @@ class MainActivity : Activity() {
                     statusCard.background = createCardBackground("#1F2937")
                     statusTitle.text = "⚠️ ОШИБКА СВЯЗИ"
                     statusTitle.setTextColor(Color.parseColor("#F3F4F6"))
-                    statusSubtext.text = if (errorDetail.isNotEmpty()) errorDetail else "Проверьте данные или интернет"
+                    statusSubtext.text = if (errorDetail.isNotEmpty()) errorDetail else "Проверьте VPN или данные"
                 }
             }
         }
@@ -276,15 +282,15 @@ class MainActivity : Activity() {
 
     private fun authenticate(appId: String, appSecret: String, email: String, pass: String, onError: (String) -> Unit): String? {
         return try {
+            val sha256Password = pass.toSha256()
             val json = JsonObject().apply {
-                addProperty("appId", appId)
                 addProperty("appSecret", appSecret)
                 addProperty("email", email)
-                addProperty("password", pass)
+                addProperty("password", sha256Password)
             }
             val body = json.toString().toRequestBody("application/json".toMediaType())
             val request = Request.Builder()
-                .url("https://openapi.deyecloud.com/v1.0/account/token")
+                .url("$baseUrl/account/token?appId=$appId")
                 .post(body)
                 .build()
 
@@ -292,12 +298,16 @@ class MainActivity : Activity() {
                 val responseData = response.body?.string() ?: ""
                 if (response.isSuccessful) {
                     val jsonRes = JsonParser.parseString(responseData).asJsonObject
-                    val code = jsonRes.get("code")?.asInt ?: -1
-                    if (code == 0) {
-                        jsonRes.getAsJsonObject("data")?.get("accessToken")?.asString
+                    val success = jsonRes.get("success")?.asBoolean ?: false
+                    val code = jsonRes.get("code")?.asString ?: ""
+                    if (success && code == "1000000") {
+                        jsonRes.get("accessToken")?.asString ?: run {
+                            onError("Токен отсутствует в ответе")
+                            null
+                        }
                     } else {
-                        val msg = jsonRes.get("msg")?.asString ?: "Unknown error"
-                        onError("Deye Error ($code): $msg")
+                        val msg = jsonRes.get("msg")?.asString ?: "Неверный логин/пароль"
+                        onError("Ошибка Deye: $msg")
                         null
                     }
                 } else {
@@ -306,35 +316,32 @@ class MainActivity : Activity() {
                 }
             }
         } catch (e: Exception) {
-            onError("Сеть: ${e.localizedMessage}")
+            onError("Проверьте, работает ли VPN")
             null
         }
     }
 
     private fun checkStationStatus(token: String, onError: (String) -> Unit): Boolean? {
         return try {
+            val json = JsonObject().apply {
+                addProperty("page", 1)
+                addProperty("limit", 10)
+            }
+            val body = json.toString().toRequestBody("application/json".toMediaType())
             val request = Request.Builder()
-                .url("https://openapi.deyecloud.com/v1.0/station/list")
-                .addHeader("Authorization", "Bearer $token")
-                .get()
+                .url("$baseUrl/station/list")
+                .addHeader("Authorization", "bearer $token")
+                .post(body)
                 .build()
 
             client.newCall(request).execute().use { response ->
                 val responseData = response.body?.string() ?: ""
                 if (response.isSuccessful) {
                     val jsonRes = JsonParser.parseString(responseData).asJsonObject
-                    if (jsonRes.get("code")?.asInt == 0) {
-                        val list = jsonRes.getAsJsonArray("data")
-                        if (list != null && list.size() > 0) {
-                            val station = list.get(0).asJsonObject
-                            val status = station.get("status")?.asInt ?: 2
-                            status == 1
-                        } else {
-                            onError("Список станций пуст")
-                            null
-                        }
+                    if (jsonRes.get("success")?.asBoolean == true) {
+                        true
                     } else {
-                        onError("Ошибка получения станций")
+                        onError("Не удалось получить статус")
                         null
                     }
                 } else {
@@ -343,7 +350,7 @@ class MainActivity : Activity() {
                 }
             }
         } catch (e: Exception) {
-            onError("Ошибка сети при проверке станции")
+            onError("Сбой VPN при проверке станции")
             null
         }
     }
@@ -363,4 +370,10 @@ class MainActivity : Activity() {
             workRequest
         )
     }
-} 
+
+    // Хеширование строки в SHA-256 в нижнем регистре
+    private fun String.toSha256(): String {
+        val bytes = MessageDigest.getInstance("SHA-256").digest(this.toByteArray(Charsets.UTF_8))
+        return bytes.joinToString("") { "%02x".format(it) }
+    }
+}
