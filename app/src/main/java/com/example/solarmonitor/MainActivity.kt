@@ -17,6 +17,7 @@ import androidx.core.content.ContextCompat
 import androidx.work.ExistingPeriodicWorkPolicy
 import androidx.work.PeriodicWorkRequestBuilder
 import androidx.work.WorkManager
+import com.google.gson.JsonElement
 import com.google.gson.JsonObject
 import com.google.gson.JsonParser
 import okhttp3.MediaType.Companion.toMediaType
@@ -45,6 +46,11 @@ class MainActivity : Activity() {
     private lateinit var statusSubtext: TextView
     private lateinit var lastUpdateText: TextView
     private lateinit var refreshBtn: Button
+
+    data class GridCheckResult(
+        val isGridOn: Boolean,
+        val details: String
+    )
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -244,7 +250,7 @@ class MainActivity : Activity() {
         statusTitle.text = "ЗАГРУЗКА..."
         statusCard.background = createCardBackground("#2D2B1E")
         statusTitle.setTextColor(Color.parseColor("#FBBF24"))
-        statusSubtext.text = "Подключение через VPN..."
+        statusSubtext.text = "Анализ параметров сети..."
 
         thread {
             val prefs = getSharedPreferences("deye_prefs", Context.MODE_PRIVATE)
@@ -255,27 +261,29 @@ class MainActivity : Activity() {
 
             var errorDetail = ""
             val token = authenticate(appId, appSecret, email, password) { err -> errorDetail = err }
-            val isOnline = if (token != null) checkStationStatus(token) { err -> errorDetail = err } else null
+            val gridResult = if (token != null) inspectGridStatus(token) { err -> errorDetail = err } else null
 
             runOnUiThread {
                 val time = SimpleDateFormat("HH:mm:ss", Locale.getDefault()).format(Date())
                 lastUpdateText.text = "Обновлено в $time"
 
-                if (isOnline == true) {
-                    statusCard.background = createCardBackground("#064E3B")
-                    statusTitle.text = "🟢 СЕТЬ В НОРМЕ"
-                    statusTitle.setTextColor(Color.parseColor("#A7F3D0"))
-                    statusSubtext.text = "Инвертор в сети / Питание подается"
-                } else if (isOnline == false) {
-                    statusCard.background = createCardBackground("#7F1D1D")
-                    statusTitle.text = "🔴 НЕТ СЕТИ / ОТКЛЮЧЕНИЕ"
-                    statusTitle.setTextColor(Color.parseColor("#FECACA"))
-                    statusSubtext.text = "Станция оффлайн или пропал свет"
+                if (gridResult != null) {
+                    if (gridResult.isGridOn) {
+                        statusCard.background = createCardBackground("#064E3B")
+                        statusTitle.text = "🟢 ГОРОДСКАЯ СЕТЬ В НОРМЕ"
+                        statusTitle.setTextColor(Color.parseColor("#A7F3D0"))
+                        statusSubtext.text = gridResult.details
+                    } else {
+                        statusCard.background = createCardBackground("#7F1D1D")
+                        statusTitle.text = "🔴 СЕТЬ ОТКЛЮЧЕНА"
+                        statusTitle.setTextColor(Color.parseColor("#FECACA"))
+                        statusSubtext.text = gridResult.details
+                    }
                 } else {
                     statusCard.background = createCardBackground("#1F2937")
                     statusTitle.text = "⚠️ ОШИБКА СВЯЗИ"
                     statusTitle.setTextColor(Color.parseColor("#F3F4F6"))
-                    statusSubtext.text = if (errorDetail.isNotEmpty()) errorDetail else "Проверьте VPN или данные"
+                    statusSubtext.text = if (errorDetail.isNotEmpty()) errorDetail else "Не удалось получить телеметрию"
                 }
             }
         }
@@ -304,19 +312,14 @@ class MainActivity : Activity() {
                     val success = jsonRes.get("success")?.asBoolean ?: false
                     val code = jsonRes.get("code")?.asString ?: ""
                     if (success && code == "1000000") {
-                        jsonRes.get("accessToken")?.asString ?: run {
-                            onError("Токен отсутствует в ответе")
-                            null
-                        }
+                        jsonRes.get("accessToken")?.asString
                     } else {
-                        val msg = jsonRes.get("msg")?.asString ?: "Неверный логин/пароль"
-                        onError("Ошибка Deye: $msg")
+                        val msg = jsonRes.get("msg")?.asString ?: "Ошибка авторизации"
+                        onError("Auth: $msg")
                         null
                     }
                 } else {
-                    val code = response.code
-                    val cleanError = responseData.replace("\n", " ").replace("\r", " ").take(100)
-                    onError("Auth $code: $cleanError")
+                    onError("Auth ${response.code}")
                     null
                 }
             }
@@ -326,7 +329,7 @@ class MainActivity : Activity() {
         }
     }
 
-    private fun checkStationStatus(token: String, onError: (String) -> Unit): Boolean? {
+    private fun inspectGridStatus(token: String, onError: (String) -> Unit): GridCheckResult? {
         return try {
             val json = JsonObject().apply {
                 addProperty("page", 1)
@@ -334,7 +337,7 @@ class MainActivity : Activity() {
             }
             val body = json.toString().toRequestBody("application/json".toMediaType())
             val request = Request.Builder()
-                .url("$baseUrl/station/list")
+                .url("$baseUrl/device/list")
                 .post(body)
                 .addHeader("Authorization", "bearer $token")
                 .addHeader("Accept", "application/json")
@@ -345,39 +348,74 @@ class MainActivity : Activity() {
                 val responseData = response.body?.string() ?: ""
                 if (response.isSuccessful) {
                     val jsonRes = JsonParser.parseString(responseData).asJsonObject
-                    val success = jsonRes.get("success")?.asBoolean ?: false
-                    if (success) {
-                        val stationList = jsonRes.getAsJsonArray("stationList")
+                    if (jsonRes.get("success")?.asBoolean == true) {
+                        val deviceList = jsonRes.getAsJsonArray("deviceList")
                             ?: jsonRes.getAsJsonObject("data")?.getAsJsonArray("list")
                             ?: jsonRes.getAsJsonArray("list")
 
-                        if (stationList != null && stationList.size() > 0) {
-                            val firstStation = stationList[0].asJsonObject
-                            val status = firstStation.get("status")?.asInt
-                            if (status != null) {
-                                status == 1
+                        if (deviceList != null && deviceList.size() > 0) {
+                            val device = deviceList[0].asJsonObject
+                            
+                            val gridVolts = findDoubleValue(device, "gridVoltage", "acVoltage", "vGrid", "gridVolts")
+                            val gridPower = findDoubleValue(device, "gridPower", "pGrid", "acPower", "gridPowerW")
+                            val gridState = device.get("gridState")?.asInt ?: device.get("acState")?.asInt
+
+                            if (gridVolts != null) {
+                                if (gridVolts > 50.0) {
+                                    GridCheckResult(true, "Напряжение сети: ${gridVolts.toInt()} В\nПитание от города подается")
+                                } else {
+                                    GridCheckResult(false, "Напряжение сети: 0 В\nРабота от АКБ / Солнца")
+                                }
+                            } else if (gridPower != null) {
+                                if (gridPower > 5.0) {
+                                    GridCheckResult(true, "Мощность сети: ${gridPower.toInt()} Вт\nПитание от города подается")
+                                } else {
+                                    GridCheckResult(false, "Сеть не потребляется / Отключена\nРабота от АКБ / Солнца")
+                                }
+                            } else if (gridState != null) {
+                                if (gridState == 1) {
+                                    GridCheckResult(true, "Городская сеть подключена")
+                                } else {
+                                    GridCheckResult(false, "Городская сеть отключена\nРабота от АКБ")
+                                }
                             } else {
-                                true
+                                val status = device.get("status")?.asInt ?: 1
+                                if (status == 1) {
+                                    GridCheckResult(true, "Инвертор передает данные\n(Сеть активна)")
+                                } else {
+                                    GridCheckResult(false, "Нет соединения с инвертором")
+                                }
                             }
                         } else {
-                            true
+                            GridCheckResult(true, "Станция в сети (Устройства найдены)")
                         }
                     } else {
-                        val msg = jsonRes.get("msg")?.asString ?: "Не удалось получить статус"
-                        onError("Stat Error: $msg")
+                        val msg = jsonRes.get("msg")?.asString ?: "Ошибка получения данных"
+                        onError("Device Err: $msg")
                         null
                     }
                 } else {
-                    val code = response.code
-                    val cleanError = responseData.replace("\n", " ").replace("\r", " ").take(100)
-                    onError("Stat $code: $cleanError")
+                    onError("Device Http ${response.code}")
                     null
                 }
             }
         } catch (e: Exception) {
-            onError("Stat Crash: ${e.localizedMessage}")
+            onError("Device Crash: ${e.localizedMessage}")
             null
         }
+    }
+
+    private fun findDoubleValue(obj: JsonObject, vararg keys: String): Double? {
+        for (key in keys) {
+            if (obj.has(key) && !obj.get(key).isJsonNull) {
+                return try {
+                    obj.get(key).asDouble
+                } catch (e: Exception) {
+                    null
+                }
+            }
+        }
+        return null
     }
 
     private fun createCardBackground(colorHex: String): GradientDrawable {
