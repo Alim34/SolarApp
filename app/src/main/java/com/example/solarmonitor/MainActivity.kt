@@ -46,8 +46,8 @@ class MainActivity : Activity() {
     private lateinit var lastUpdateText: TextView
     private lateinit var refreshBtn: Button
 
-    data class GridCheckResult(
-        val isGridOn: Boolean,
+    data class CheckResult(
+        val isOnline: Boolean,
         val details: String
     )
 
@@ -249,7 +249,7 @@ class MainActivity : Activity() {
         statusTitle.text = "ЗАГРУЗКА..."
         statusCard.background = createCardBackground("#2D2B1E")
         statusTitle.setTextColor(Color.parseColor("#FBBF24"))
-        statusSubtext.text = "Анализ параметров сети..."
+        statusSubtext.text = "Запрос данных станции..."
 
         thread {
             val prefs = getSharedPreferences("deye_prefs", Context.MODE_PRIVATE)
@@ -260,29 +260,29 @@ class MainActivity : Activity() {
 
             var errorDetail = ""
             val token = authenticate(appId, appSecret, email, password) { err -> errorDetail = err }
-            val gridResult = if (token != null) inspectGridStatus(appId, token) { err -> errorDetail = err } else null
+            val result = if (token != null) checkStationStatus(token) { err -> errorDetail = err } else null
 
             runOnUiThread {
                 val time = SimpleDateFormat("HH:mm:ss", Locale.getDefault()).format(Date())
                 lastUpdateText.text = "Обновлено в $time"
 
-                if (gridResult != null) {
-                    if (gridResult.isGridOn) {
+                if (result != null) {
+                    if (result.isOnline) {
                         statusCard.background = createCardBackground("#064E3B")
-                        statusTitle.text = "🟢 ГОРОДСКАЯ СЕТЬ В НОРМЕ"
+                        statusTitle.text = "🟢 СЕТЬ В НОРМЕ"
                         statusTitle.setTextColor(Color.parseColor("#A7F3D0"))
-                        statusSubtext.text = gridResult.details
+                        statusSubtext.text = result.details
                     } else {
                         statusCard.background = createCardBackground("#7F1D1D")
-                        statusTitle.text = "🔴 СЕТЬ ОТКЛЮЧЕНА"
+                        statusTitle.text = "🔴 СТАЦИЯ ОФФЛАЙН"
                         statusTitle.setTextColor(Color.parseColor("#FECACA"))
-                        statusSubtext.text = gridResult.details
+                        statusSubtext.text = result.details
                     }
                 } else {
                     statusCard.background = createCardBackground("#1F2937")
                     statusTitle.text = "⚠️ ОШИБКА СВЯЗИ"
                     statusTitle.setTextColor(Color.parseColor("#F3F4F6"))
-                    statusSubtext.text = if (errorDetail.isNotEmpty()) errorDetail else "Не удалось получить телеметрию"
+                    statusSubtext.text = if (errorDetail.isNotEmpty()) errorDetail else "Не удалось получить данные"
                 }
             }
         }
@@ -318,7 +318,7 @@ class MainActivity : Activity() {
                         null
                     }
                 } else {
-                    onError("Auth ${response.code}")
+                    onError("Auth HTTP ${response.code}")
                     null
                 }
             }
@@ -328,7 +328,7 @@ class MainActivity : Activity() {
         }
     }
 
-    private fun inspectGridStatus(appId: String, token: String, onError: (String) -> Unit): GridCheckResult? {
+    private fun checkStationStatus(token: String, onError: (String) -> Unit): CheckResult? {
         return try {
             val json = JsonObject().apply {
                 addProperty("page", 1)
@@ -336,9 +336,9 @@ class MainActivity : Activity() {
             }
             val body = json.toString().toRequestBody("application/json".toMediaType())
             val request = Request.Builder()
-                .url("$baseUrl/device/list?appId=$appId")
+                .url("$baseUrl/station/list")
                 .post(body)
-                .addHeader("Authorization", "Bearer $token")
+                .addHeader("Authorization", "bearer $token")
                 .addHeader("Accept", "application/json")
                 .addHeader("User-Agent", "Mozilla/5.0 (Android 13; Mobile)")
                 .build()
@@ -348,68 +348,37 @@ class MainActivity : Activity() {
                 if (response.isSuccessful) {
                     val jsonRes = JsonParser.parseString(responseData).asJsonObject
                     if (jsonRes.get("success")?.asBoolean == true) {
-                        val deviceList = jsonRes.getAsJsonArray("deviceList")
+                        val stationList = jsonRes.getAsJsonArray("stationList")
                             ?: jsonRes.getAsJsonObject("data")?.getAsJsonArray("list")
                             ?: jsonRes.getAsJsonArray("list")
 
-                        if (deviceList != null && deviceList.size() > 0) {
-                            val device = deviceList[0].asJsonObject
+                        if (stationList != null && stationList.size() > 0) {
+                            val station = stationList[0].asJsonObject
+                            val status = station.get("status")?.asInt ?: 1
+                            val name = station.get("name")?.asString ?: "Станция Deye"
 
-                            val gridVolts = findDoubleValue(device, "gridVoltage", "acVoltage", "vGrid", "gridVolts")
-                            val gridPower = findDoubleValue(device, "gridPower", "pGrid", "acPower", "gridPowerW")
-                            val gridState = device.get("gridState")?.asInt ?: device.get("acState")?.asInt
-
-                            if (gridVolts != null) {
-                                if (gridVolts > 50.0) {
-                                    GridCheckResult(true, "Напряжение сети: ${gridVolts.toInt()} В\nПитание от города подается")
-                                } else {
-                                    GridCheckResult(false, "Напряжение сети: 0 В\nРабота от АКБ / Солнца")
-                                }
-                            } else if (gridPower != null) {
-                                if (gridPower > 5.0) {
-                                    GridCheckResult(true, "Мощность сети: ${gridPower.toInt()} Вт\nПитание от города подается")
-                                } else {
-                                    GridCheckResult(false, "Сеть не потребляется / Отключена\nРабота от АКБ / Солнца")
-                                }
-                            } else if (gridState != null) {
-                                if (gridState == 1) {
-                                    GridCheckResult(true, "Городская сеть подключена")
-                                } else {
-                                    GridCheckResult(false, "Городская сеть отключена\nРабота от АКБ")
-                                }
+                            if (status == 1) {
+                                CheckResult(true, "Объект: $name\nСоединение с облаком стабильно")
                             } else {
-                                GridCheckResult(true, "Оборудование активно\nГородская сеть подключена")
+                                CheckResult(false, "Объект: $name\nНет ответа от станции")
                             }
                         } else {
-                            GridCheckResult(true, "Инвертор в сети")
+                            CheckResult(true, "Инвертор и станция активны")
                         }
                     } else {
-                        val msg = jsonRes.get("msg")?.asString ?: "Ошибка получения данных"
-                        onError("Device Err: $msg")
+                        val msg = jsonRes.get("msg")?.asString ?: "Ошибка станции"
+                        onError("Stat Error: $msg")
                         null
                     }
                 } else {
-                    onError("Device Http ${response.code}")
+                    onError("Stat HTTP ${response.code}")
                     null
                 }
             }
         } catch (e: Exception) {
-            onError("Device Crash: ${e.localizedMessage}")
+            onError("Stat Crash: ${e.localizedMessage}")
             null
         }
-    }
-
-    private fun findDoubleValue(obj: JsonObject, vararg keys: String): Double? {
-        for (key in keys) {
-            if (obj.has(key) && !obj.get(key).isJsonNull) {
-                return try {
-                    obj.get(key).asDouble
-                } catch (e: Exception) {
-                    null
-                }
-            }
-        }
-        return null
     }
 
     private fun createCardBackground(colorHex: String): GradientDrawable {
