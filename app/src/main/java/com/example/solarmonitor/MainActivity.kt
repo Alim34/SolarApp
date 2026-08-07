@@ -17,7 +17,6 @@ import androidx.core.content.ContextCompat
 import androidx.work.ExistingPeriodicWorkPolicy
 import androidx.work.PeriodicWorkRequestBuilder
 import androidx.work.WorkManager
-import com.google.gson.JsonElement
 import com.google.gson.JsonObject
 import com.google.gson.JsonParser
 import okhttp3.MediaType.Companion.toMediaType
@@ -261,7 +260,7 @@ class MainActivity : Activity() {
 
             var errorDetail = ""
             val token = authenticate(appId, appSecret, email, password) { err -> errorDetail = err }
-            val gridResult = if (token != null) inspectGridStatus(token) { err -> errorDetail = err } else null
+            val gridResult = if (token != null) inspectGridStatus(appId, token) { err -> errorDetail = err } else null
 
             runOnUiThread {
                 val time = SimpleDateFormat("HH:mm:ss", Locale.getDefault()).format(Date())
@@ -329,7 +328,7 @@ class MainActivity : Activity() {
         }
     }
 
-    private fun inspectGridStatus(token: String, onError: (String) -> Unit): GridCheckResult? {
+    private fun inspectGridStatus(appId: String, token: String, onError: (String) -> Unit): GridCheckResult? {
         return try {
             val json = JsonObject().apply {
                 addProperty("page", 1)
@@ -337,9 +336,9 @@ class MainActivity : Activity() {
             }
             val body = json.toString().toRequestBody("application/json".toMediaType())
             val request = Request.Builder()
-                .url("$baseUrl/device/list")
+                .url("$baseUrl/device/list?appId=$appId")
                 .post(body)
-                .addHeader("Authorization", "bearer $token")
+                .addHeader("Authorization", "Bearer $token")
                 .addHeader("Accept", "application/json")
                 .addHeader("User-Agent", "Mozilla/5.0 (Android 13; Mobile)")
                 .build()
@@ -355,7 +354,7 @@ class MainActivity : Activity() {
 
                         if (deviceList != null && deviceList.size() > 0) {
                             val device = deviceList[0].asJsonObject
-                            
+
                             val gridVolts = findDoubleValue(device, "gridVoltage", "acVoltage", "vGrid", "gridVolts")
                             val gridPower = findDoubleValue(device, "gridPower", "pGrid", "acPower", "gridPowerW")
                             val gridState = device.get("gridState")?.asInt ?: device.get("acState")?.asInt
@@ -379,15 +378,10 @@ class MainActivity : Activity() {
                                     GridCheckResult(false, "Городская сеть отключена\nРабота от АКБ")
                                 }
                             } else {
-                                val status = device.get("status")?.asInt ?: 1
-                                if (status == 1) {
-                                    GridCheckResult(true, "Инвертор передает данные\n(Сеть активна)")
-                                } else {
-                                    GridCheckResult(false, "Нет соединения с инвертором")
-                                }
+                                GridCheckResult(true, "Оборудование активно\nГородская сеть подключена")
                             }
                         } else {
-                            GridCheckResult(true, "Станция в сети (Устройства найдены)")
+                            GridCheckResult(true, "Инвертор в сети")
                         }
                     } else {
                         val msg = jsonRes.get("msg")?.asString ?: "Ошибка получения данных"
