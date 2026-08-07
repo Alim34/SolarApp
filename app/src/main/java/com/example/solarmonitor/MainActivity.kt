@@ -45,6 +45,7 @@ class MainActivity : Activity() {
     private lateinit var statusTitle: TextView
     private lateinit var statusSubtext: TextView
     private lateinit var lastUpdateText: TextView
+    private lateinit var refreshBtn: Button // Отдельно объявили кнопку, чтобы управлять ей
 
     data class CheckResult(val isGridOn: Boolean, val titleText: String, val details: String)
 
@@ -60,6 +61,7 @@ class MainActivity : Activity() {
         val rootLayout = FrameLayout(this).apply { setBackgroundColor(Color.parseColor("#121212")) }
         setupLayout = createSetupView()
         dashboardLayout = createDashboardView()
+        
         rootLayout.addView(setupLayout)
         rootLayout.addView(dashboardLayout)
         setContentView(rootLayout)
@@ -178,11 +180,12 @@ class MainActivity : Activity() {
             }
             addView(lastUpdateText)
 
-            addView(Button(this.context).apply {
+            refreshBtn = Button(this.context).apply {
                 text = "🔄 ОБНОВИТЬ СТАТУС"
                 setBackgroundColor(Color.parseColor("#BB86FC"))
                 setOnClickListener { fetchStatus() }
-            })
+            }
+            addView(refreshBtn)
 
             addView(Button(this.context).apply {
                 text = "⚙️ Настройки"
@@ -204,6 +207,10 @@ class MainActivity : Activity() {
     }
 
     private fun fetchStatus() {
+        // Блокируем кнопку и меняем текст, чтобы было видно, что запрос пошел
+        refreshBtn.isEnabled = false
+        refreshBtn.text = "⌛ ЗАГРУЗКА..."
+
         thread {
             val prefs = getSharedPreferences("deye_prefs", Context.MODE_PRIVATE)
             val appId = prefs.getString("app_id", "") ?: ""
@@ -215,16 +222,21 @@ class MainActivity : Activity() {
             val result = if (token != null) checkTelemetry(appId, token) else null
 
             runOnUiThread {
+                // Возвращаем кнопку в нормальное состояние
+                refreshBtn.isEnabled = true
+                refreshBtn.text = "🔄 ОБНОВИТЬ СТАТУС"
+
                 lastUpdateText.text = "Обновлено в ${SimpleDateFormat("HH:mm:ss", Locale.getDefault()).format(Date())}"
+                
                 if (result != null) {
                     statusCard.background = createCardBackground(if (result.isGridOn) "#064E3B" else "#7F1D1D")
                     statusTitle.text = result.titleText
                     statusTitle.setTextColor(if (result.isGridOn) Color.parseColor("#A7F3D0") else Color.parseColor("#FECACA"))
                     statusSubtext.text = result.details
                 } else {
-                    statusTitle.text = "🔴 ОШИБКА ПОЛУЧЕНИЯ ДАННЫХ"
+                    statusTitle.text = "🔴 ОШИБКА ДАННЫХ"
                     statusTitle.setTextColor(Color.parseColor("#FECACA"))
-                    statusSubtext.text = "Не удалось подключиться к серверу Deye"
+                    statusSubtext.text = "Не удалось подключиться к серверу Deye. Проверьте интернет или настройки."
                 }
             }
         }
@@ -291,31 +303,36 @@ class MainActivity : Activity() {
                 val res = JsonParser.parseString(response.body?.string() ?: "").asJsonObject
                 val data = if (res.has("data") && res.get("data").isJsonObject) res.getAsJsonObject("data") else res
 
-                val gridVoltage = parseDouble(data, "gridVoltage") ?: parseDouble(data, "vGrid") ?: parseDouble(data, "acVoltage") ?: 0.0
-                val gridPower = parseDouble(data, "gridPower") ?: 0.0
-                val purchasePower = parseDouble(data, "purchasePower") ?: parseDouble(data, "purchasedPower") ?: 0.0
+                // Собираем все варианты напряжения сети, какие только может отдать Deye, и берем максимальное
+                val v1 = parseDouble(data, "gridVoltage") ?: 0.0
+                val v2 = parseDouble(data, "vGrid") ?: 0.0
+                val v3 = parseDouble(data, "acVoltage") ?: 0.0
+                val gridVoltage = maxOf(v1, maxOf(v2, v3))
 
-                // Читаем конкретное поле gridCheck, а также gridStatus / gridState
+                val gridPower = parseDouble(data, "gridPower") ?: parseDouble(data, "pGrid") ?: 0.0
+                val purchasePower = parseDouble(data, "purchasePower") ?: parseDouble(data, "purchasedPower") ?: 0.0
+                val conPower = parseDouble(data, "consumptionPower") ?: 0.0
+
+                // Ищем любые статусы подключения
                 val gridCheck = data.get("gridCheck")?.asInt ?: data.get("grid_check")?.asInt
-                val gridStatusInt = data.get("gridStatus")?.asInt ?: data.get("gridState")?.asInt ?: gridCheck
+                val gridStatusInt = data.get("gridStatus")?.asInt ?: data.get("gridState")?.asInt ?: gridCheck ?: 0
                 val gridStatusStr = data.get("gridStatus")?.asString ?: data.get("gridState")?.asString ?: data.get("gridCheck")?.asString
 
-                // Считаем сеть активной по любому из признаков (gridCheck == 1, положительный статус, напряжение > 50В или активная мощность)
-                val isGridActive = (gridCheck != null && gridCheck == 1) ||
-                                   (gridStatusInt != null && gridStatusInt > 0 && gridStatusInt != 3) ||
+                // Считаем сеть активной, если напряжение выше 80 Вольт ИЛИ статус явно подтверждает подключение ИЛИ идет переток мощности
+                val isGridActive = (gridVoltage > 80.0) ||
+                                   (gridStatusInt > 0 && gridStatusInt != 3) ||
                                    (gridStatusStr != null && gridStatusStr.lowercase() in listOf("1", "true", "normal", "on", "connected")) ||
-                                   (gridVoltage > 50.0) ||
                                    (abs(gridPower) > 2.0) ||
                                    (abs(purchasePower) > 2.0)
 
-                val statusTitleText = if (isGridActive) "🟢 СЕТЬ В НОРМЕ" else "🔴 СЕТЬ ОТКЛЮЧЕНА (АКБ)"
+                val statusTitleText = if (isGridActive) "🟢 СЕТЬ В НОРМЕ" else "🔴 СЕТЬ ОТКЛЮЧЕНА"
 
                 val detailsText = buildString {
                     append("Объект: $stationName\n")
-                    append("gridCheck: ${gridCheck ?: "нет данных"}\n")
-                    append("Вольтаж: ${gridVoltage.toInt()} В\n")
+                    append("Вольтаж сети: ${gridVoltage.toInt()} В\n")
                     append("Мощность сети: ${gridPower.toInt()} Вт\n")
-                    append("Нагрузка: ${parseDouble(data, "consumptionPower")?.toInt() ?: 0} Вт")
+                    append("Нагрузка дома: ${conPower.toInt()} Вт\n")
+                    append("Код статуса (Check): $gridStatusInt")
                 }
 
                 CheckResult(isGridActive, statusTitleText, detailsText)
