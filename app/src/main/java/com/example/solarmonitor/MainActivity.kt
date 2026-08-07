@@ -28,15 +28,10 @@ import java.text.SimpleDateFormat
 import java.util.*
 import java.util.concurrent.TimeUnit
 import kotlin.concurrent.thread
-import kotlin.math.abs
 
 class MainActivity : Activity() {
 
-    private val client = OkHttpClient.Builder()
-        .connectTimeout(15, TimeUnit.SECONDS)
-        .readTimeout(15, TimeUnit.SECONDS)
-        .build()
-
+    private val client = OkHttpClient.Builder().connectTimeout(20, TimeUnit.SECONDS).build()
     private val baseUrl = "https://eu1-developer.deyecloud.com/v1.0"
 
     private lateinit var setupLayout: LinearLayout
@@ -50,11 +45,6 @@ class MainActivity : Activity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            if (ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
-                ActivityCompat.requestPermissions(this, arrayOf(Manifest.permission.POST_NOTIFICATIONS), 101)
-            }
-        }
         val rootLayout = FrameLayout(this).apply { setBackgroundColor(Color.parseColor("#121212")) }
         setupLayout = createSetupView()
         dashboardLayout = createDashboardView()
@@ -69,37 +59,26 @@ class MainActivity : Activity() {
     private fun createSetupView(): LinearLayout {
         val prefs = getSharedPreferences("deye_prefs", Context.MODE_PRIVATE)
         return LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            setPadding(50, 60, 50, 60)
-            gravity = Gravity.CENTER_HORIZONTAL
-            val title = TextView(this.context).apply { text = "Настройки Deye Cloud"; textSize = 22f; setTypeface(null, Typeface.BOLD); setTextColor(Color.WHITE); setPadding(0, 0, 0, 30) }
-            addView(title)
-            val appIdInput = createInputField("App ID", prefs.getString("app_id", ""))
-            val appSecretInput = createInputField("App Secret", prefs.getString("app_secret", ""))
-            val emailInput = createInputField("Email", prefs.getString("email", ""))
-            val passInput = createInputField("Пароль", prefs.getString("password", ""), true)
-            val saveBtn = Button(this.context).apply {
+            orientation = LinearLayout.VERTICAL; setPadding(50, 60, 50, 60); gravity = Gravity.CENTER_HORIZONTAL
+            addView(TextView(this.context).apply { text = "Настройки Deye Cloud"; textSize = 22f; setTextColor(Color.WHITE) })
+            val appId = createInputField("App ID", prefs.getString("app_id", ""))
+            val appSecret = createInputField("App Secret", prefs.getString("app_secret", ""))
+            val email = createInputField("Email", prefs.getString("email", ""))
+            val pass = createInputField("Пароль", prefs.getString("password", ""), true)
+            addView(Button(this.context).apply {
                 text = "Сохранить и запустить"
-                setBackgroundColor(Color.parseColor("#BB86FC"))
                 setOnClickListener {
-                    prefs.edit().putString("app_id", appIdInput.text.toString().trim())
-                        .putString("app_secret", appSecretInput.text.toString().trim())
-                        .putString("email", emailInput.text.toString().trim())
-                        .putString("password", passInput.text.toString().trim()).apply()
-                    scheduleWorker(); showDashboard()
+                    prefs.edit().putString("app_id", appId.text.toString().trim()).putString("app_secret", appSecret.text.toString().trim())
+                        .putString("email", email.text.toString().trim()).putString("password", pass.text.toString().trim()).apply()
+                    showDashboard()
                 }
-            }
-            addView(saveBtn)
+            })
         }
     }
 
     private fun LinearLayout.createInputField(label: String, initial: String?, isPass: Boolean = false): EditText {
-        val et = EditText(this.context).apply {
-            hint = label; setText(initial ?: ""); setTextColor(Color.WHITE); setPadding(30, 25, 30, 25)
-            background = GradientDrawable().apply { setColor(Color.parseColor("#1E1E1E")); cornerRadius = 16f }
-            if (isPass) inputType = android.text.InputType.TYPE_CLASS_TEXT or android.text.InputType.TYPE_TEXT_VARIATION_PASSWORD
-        }
-        this.addView(TextView(this.context).apply { text = label; setTextColor(Color.parseColor("#BB86FC")); setPadding(0, 10, 0, 5) })
+        val et = EditText(this.context).apply { hint = label; setText(initial ?: ""); setTextColor(Color.WHITE); background = GradientDrawable().apply { setColor(Color.parseColor("#1E1E1E")); cornerRadius = 16f } }
+        this.addView(TextView(this.context).apply { text = label; setTextColor(Color.parseColor("#BB86FC")) })
         this.addView(et)
         return et
     }
@@ -107,15 +86,14 @@ class MainActivity : Activity() {
     private fun createDashboardView(): LinearLayout {
         return LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL; setPadding(50, 60, 50, 60); gravity = Gravity.CENTER_HORIZONTAL
-            addView(TextView(this.context).apply { text = "Solar Monitor Deye"; textSize = 22f; setTextColor(Color.WHITE); setPadding(0, 0, 0, 40) })
             statusCard = LinearLayout(this.context).apply { orientation = LinearLayout.VERTICAL; setPadding(50, 50, 50, 50); background = createCardBackground("#1E1E1E") }
-            statusTitle = TextView(this.context).apply { text = "ПРОВЕРКА..."; textSize = 20f; setTypeface(null, Typeface.BOLD); gravity = Gravity.CENTER }
-            statusSubtext = TextView(this.context).apply { text = "Загрузка..."; textSize = 14f; setPadding(0, 15, 0, 0); gravity = Gravity.CENTER }
+            statusTitle = TextView(this.context).apply { text = "Нажми обновить"; textSize = 20f; setTextColor(Color.WHITE) }
+            statusSubtext = TextView(this.context).apply { text = ""; textSize = 14f; setTextColor(Color.LTGRAY) }
             statusCard.addView(statusTitle); statusCard.addView(statusSubtext); addView(statusCard)
-            lastUpdateText = TextView(this.context).apply { text = "Обновлено: --:--:--"; setPadding(0, 30, 0, 30) }
+            lastUpdateText = TextView(this.context).apply { text = "Обновлено: --:--"; setPadding(0, 30, 0, 30); setTextColor(Color.GRAY) }
             addView(lastUpdateText)
-            addView(Button(this.context).apply { text = "🔄 ОБНОВИТЬ СТАТУС"; setBackgroundColor(Color.parseColor("#BB86FC")); setOnClickListener { fetchStatus() } })
-            addView(Button(this.context).apply { text = "⚙️ Настройки"; setBackgroundColor(Color.TRANSPARENT); setOnClickListener { showSetup() } })
+            addView(Button(this.context).apply { text = "🔄 ОБНОВИТЬ СТАТУС"; setOnClickListener { fetchStatus() } })
+            addView(Button(this.context).apply { text = "⚙️ Настройки"; setOnClickListener { showSetup() } })
         }
     }
 
@@ -126,51 +104,52 @@ class MainActivity : Activity() {
         thread {
             val prefs = getSharedPreferences("deye_prefs", Context.MODE_PRIVATE)
             val appId = prefs.getString("app_id", "") ?: ""
-            val token = authenticate(appId, prefs.getString("app_secret", "") ?: "", prefs.getString("email", "") ?: "", prefs.getString("password", "") ?: "")
-            val result = if (token != null) checkTelemetry(appId, token) else null
-            runOnUiThread {
-                lastUpdateText.text = "Обновлено в ${SimpleDateFormat("HH:mm:ss").format(Date())}"
-                if (result != null) {
-                    statusCard.background = createCardBackground(if (result.isGridOn) "#064E3B" else "#7F1D1D")
-                    statusTitle.text = result.titleText
-                    statusTitle.setTextColor(if (result.isGridOn) Color.parseColor("#A7F3D0") else Color.parseColor("#FECACA"))
-                    statusSubtext.text = result.details
+            val secret = prefs.getString("app_secret", "") ?: ""
+            val email = prefs.getString("email", "") ?: ""
+            val pass = prefs.getString("password", "") ?: ""
+            
+            val token = authenticate(appId, secret, email, pass)
+            if (token != null) {
+                val result = getTelemetry(appId, token)
+                runOnUiThread {
+                    if (result != null) {
+                        statusTitle.text = result.titleText
+                        statusSubtext.text = result.details
+                        statusCard.background = createCardBackground(if (result.isGridOn) "#064E3B" else "#7F1D1D")
+                        lastUpdateText.text = "Обновлено в ${SimpleDateFormat("HH:mm:ss").format(Date())}"
+                    }
                 }
             }
         }
     }
 
-    private fun authenticate(appId: String, appSecret: String, email: String, pass: String): String? {
+    private fun authenticate(appId: String, secret: String, email: String, pass: String): String? {
         return try {
-            val json = JsonObject().apply { addProperty("appSecret", appSecret); addProperty("email", email); addProperty("password", pass.toSha256()) }
+            val json = JsonObject().apply { addProperty("appSecret", secret); addProperty("email", email); addProperty("password", pass.toSha256()) }
             val req = Request.Builder().url("$baseUrl/account/token?appId=$appId").post(json.toString().toRequestBody("application/json".toMediaType())).build()
             client.newCall(req).execute().use { res -> JsonParser.parseString(res.body?.string() ?: "").asJsonObject.get("accessToken")?.asString }
         } catch (e: Exception) { null }
     }
 
-    private fun checkTelemetry(appId: String, token: String): CheckResult? {
+    private fun getTelemetry(appId: String, token: String): CheckResult? {
         try {
-            // Упрощенный запрос к latest
-            val req = Request.Builder().url("$baseUrl/station/latest?appId=$appId").header("Authorization", "bearer $token").build()
-            client.newCall(req).execute().use { response ->
-                val res = JsonParser.parseString(response.body?.string() ?: "").asJsonObject
-                val data = if (res.has("data")) res.getAsJsonObject("data") else res
-                
-                val v = parseDouble(data, "gridVoltage") ?: parseDouble(data, "vGrid") ?: 0.0
-                val p = parseDouble(data, "gridPower") ?: 0.0
-                val st = parseDouble(data, "gridStatus") ?: parseDouble(data, "gridState") ?: 0.0
-                
-                // Считаем сеть активной, если вольтаж > 50В или статус сети > 0
-                val active = v > 50.0 || st > 0.0
-                
-                return CheckResult(active, if (active) "🟢 СЕТЬ В НОРМЕ" else "🔴 СЕТЬ ОТКЛЮЧЕНА", 
-                    "Вольтаж: ${v.toInt()} В\nМощность сети: ${p.toInt()} Вт\nНагрузка: ${parseDouble(data, "consumptionPower")?.toInt() ?: 0} Вт")
+            // 1. Получаем ID станции
+            val listReq = Request.Builder().url("$baseUrl/station/list").post(JsonObject().toString().toRequestBody("application/json".toMediaType())).header("Authorization", "bearer $token").build()
+            val listRes = client.newCall(listReq).execute().use { JsonParser.parseString(it.body?.string() ?: "").asJsonObject }
+            val stationId = listRes.getAsJsonArray("stationList")?.get(0)?.asJsonObject?.get("id")?.asString ?: return null
+
+            // 2. Получаем данные по ID
+            val latestReq = Request.Builder().url("$baseUrl/station/latest?appId=$appId").post(JsonObject().apply { addProperty("stationId", stationId) }.toString().toRequestBody("application/json".toMediaType())).header("Authorization", "bearer $token").build()
+            client.newCall(latestReq).execute().use { response ->
+                val data = JsonParser.parseString(response.body?.string() ?: "").asJsonObject.getAsJsonObject("data")
+                val v = data.get("gridVoltage")?.asDouble ?: 0.0
+                val p = data.get("gridPower")?.asDouble ?: 0.0
+                val active = v > 50.0 || p > 0.0
+                return CheckResult(active, if (active) "🟢 СЕТЬ В НОРМЕ" else "🔴 СЕТЬ ОТКЛЮЧЕНА", "Вольтаж: ${v.toInt()} В\nМощность сети: ${p.toInt()} Вт")
             }
         } catch (e: Exception) { return null }
     }
 
-    private fun parseDouble(obj: JsonObject, key: String): Double? = try { obj.get(key)?.asDouble } catch (e: Exception) { null }
-    private fun createCardBackground(hex: String) = GradientDrawable().apply { setColor(Color.parseColor(hex)); cornerRadius = 24f }
-    private fun scheduleWorker() { WorkManager.getInstance(this).enqueueUniquePeriodicWork("Deye", ExistingPeriodicWorkPolicy.KEEP, PeriodicWorkRequestBuilder<DeyeCloudWorker>(15, TimeUnit.MINUTES).build()) }
     private fun String.toSha256() = MessageDigest.getInstance("SHA-256").digest(this.toByteArray()).joinToString("") { "%02x".format(it) }
+    private fun createCardBackground(hex: String) = GradientDrawable().apply { setColor(Color.parseColor(hex)); cornerRadius = 24f }
 }
