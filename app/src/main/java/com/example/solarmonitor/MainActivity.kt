@@ -47,7 +47,8 @@ class MainActivity : Activity() {
     private lateinit var refreshBtn: Button
 
     data class CheckResult(
-        val isOnline: Boolean,
+        val isGridOn: Boolean,
+        val titleText: String,
         val details: String
     )
 
@@ -60,107 +61,46 @@ class MainActivity : Activity() {
             }
         }
 
-        val rootLayout = FrameLayout(this).apply {
-            setBackgroundColor(Color.parseColor("#121212"))
-        }
-
+        val rootLayout = FrameLayout(this).apply { setBackgroundColor(Color.parseColor("#121212")) }
         setupLayout = createSetupView()
         dashboardLayout = createDashboardView()
-
         rootLayout.addView(setupLayout)
         rootLayout.addView(dashboardLayout)
-
         setContentView(rootLayout)
 
         val prefs = getSharedPreferences("deye_prefs", Context.MODE_PRIVATE)
-        val appId = prefs.getString("app_id", "") ?: ""
-
-        if (appId.isNotEmpty()) {
-            showDashboard()
-        } else {
-            showSetup()
-        }
+        if (prefs.getString("app_id", "").isNullOrEmpty()) showSetup() else showDashboard()
     }
 
     private fun createSetupView(): LinearLayout {
         val prefs = getSharedPreferences("deye_prefs", Context.MODE_PRIVATE)
-
         return LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             setPadding(60, 80, 60, 80)
             gravity = Gravity.CENTER_HORIZONTAL
             setBackgroundColor(Color.parseColor("#121212"))
 
-            val title = TextView(this.context).apply {
-                text = "Deye Cloud Настройка"
-                textSize = 22f
-                setTypeface(null, Typeface.BOLD)
-                setTextColor(Color.WHITE)
-                setPadding(0, 0, 0, 40)
-            }
-            addView(title)
-
-            val appIdInput = EditText(this.context).apply {
-                hint = "App ID"
-                setHintTextColor(Color.GRAY)
-                setTextColor(Color.WHITE)
-                setText(prefs.getString("app_id", ""))
-                setPadding(30, 30, 30, 30)
-            }
-            val appSecretInput = EditText(this.context).apply {
-                hint = "App Secret"
-                setHintTextColor(Color.GRAY)
-                setTextColor(Color.WHITE)
-                setText(prefs.getString("app_secret", ""))
-                setPadding(30, 30, 30, 30)
-            }
-            val emailInput = EditText(this.context).apply {
-                hint = "Email Deye Cloud"
-                setHintTextColor(Color.GRAY)
-                setTextColor(Color.WHITE)
-                setText(prefs.getString("email", ""))
-                setPadding(30, 30, 30, 30)
-            }
-            val passInput = EditText(this.context).apply {
-                hint = "Обычный пароль Deye"
-                setHintTextColor(Color.GRAY)
-                setTextColor(Color.WHITE)
-                inputType = android.text.InputType.TYPE_CLASS_TEXT or android.text.InputType.TYPE_TEXT_VARIATION_PASSWORD
-                setText(prefs.getString("password", ""))
-                setPadding(30, 30, 30, 30)
-            }
-
+            val title = TextView(this.context).apply { text = "Deye Cloud Настройка"; textSize = 22f; setTypeface(null, Typeface.BOLD); setTextColor(Color.WHITE); setPadding(0, 0, 0, 40) }
+            val appIdInput = EditText(this.context).apply { hint = "App ID"; setText(prefs.getString("app_id", "")); setTextColor(Color.WHITE); setPadding(30, 30, 30, 30) }
+            val appSecretInput = EditText(this.context).apply { hint = "App Secret"; setText(prefs.getString("app_secret", "")); setTextColor(Color.WHITE); setPadding(30, 30, 30, 30) }
+            val emailInput = EditText(this.context).apply { hint = "Email"; setText(prefs.getString("email", "")); setTextColor(Color.WHITE); setPadding(30, 30, 30, 30) }
+            val passInput = EditText(this.context).apply { hint = "Пароль"; setText(prefs.getString("password", "")); setTextColor(Color.WHITE); setPadding(30, 30, 30, 30) }
             val saveBtn = Button(this.context).apply {
                 text = "Сохранить и запустить"
                 setBackgroundColor(Color.parseColor("#BB86FC"))
                 setTextColor(Color.BLACK)
                 setOnClickListener {
-                    val appId = appIdInput.text.toString().trim()
-                    val appSecret = appSecretInput.text.toString().trim()
-                    val email = emailInput.text.toString().trim()
-                    val pass = passInput.text.toString().trim()
-
-                    if (appId.isNotEmpty() && appSecret.isNotEmpty() && email.isNotEmpty() && pass.isNotEmpty()) {
-                        prefs.edit()
-                            .putString("app_id", appId)
-                            .putString("app_secret", appSecret)
-                            .putString("email", email)
-                            .putString("password", pass)
-                            .apply()
-                        scheduleWorker()
-                        showDashboard()
-                    } else {
-                        Toast.makeText(this.context, "Заполните все 4 поля!", Toast.LENGTH_SHORT).show()
-                    }
+                    prefs.edit()
+                        .putString("app_id", appIdInput.text.toString().trim())
+                        .putString("app_secret", appSecretInput.text.toString().trim())
+                        .putString("email", emailInput.text.toString().trim())
+                        .putString("password", passInput.text.toString().trim())
+                        .apply()
+                    scheduleWorker()
+                    showDashboard()
                 }
             }
-
-            addView(appIdInput)
-            addView(appSecretInput)
-            addView(emailInput)
-            addView(passInput)
-            addView(Space(this.context).apply { minimumHeight = 30 })
-            addView(saveBtn)
+            addView(title); addView(appIdInput); addView(appSecretInput); addView(emailInput); addView(passInput); addView(Space(this.context).apply { minimumHeight = 30 }); addView(saveBtn)
         }
     }
 
@@ -171,13 +111,7 @@ class MainActivity : Activity() {
             gravity = Gravity.CENTER_HORIZONTAL
             setBackgroundColor(Color.parseColor("#121212"))
 
-            val title = TextView(this.context).apply {
-                text = "Solar Monitor Deye"
-                textSize = 22f
-                setTypeface(null, Typeface.BOLD)
-                setTextColor(Color.WHITE)
-                setPadding(0, 0, 0, 50)
-            }
+            val title = TextView(this.context).apply { text = "Solar Monitor Deye"; textSize = 22f; setTypeface(null, Typeface.BOLD); setTextColor(Color.WHITE); setPadding(0, 0, 0, 50) }
             addView(title)
 
             statusCard = LinearLayout(this.context).apply {
@@ -187,33 +121,14 @@ class MainActivity : Activity() {
                 background = createCardBackground("#1E1E1E")
             }
 
-            statusTitle = TextView(this.context).apply {
-                text = "ПРОВЕРКА..."
-                textSize = 20f
-                setTypeface(null, Typeface.BOLD)
-                setTextColor(Color.LTGRAY)
-                gravity = Gravity.CENTER
-            }
-
-            statusSubtext = TextView(this.context).apply {
-                text = "Запрос к Deye Cloud..."
-                textSize = 14f
-                setTextColor(Color.GRAY)
-                setPadding(0, 15, 0, 0)
-                gravity = Gravity.CENTER
-                maxLines = 6
-            }
+            statusTitle = TextView(this.context).apply { text = "ПРОВЕРКА..."; textSize = 20f; setTypeface(null, Typeface.BOLD); setTextColor(Color.LTGRAY); gravity = Gravity.CENTER }
+            statusSubtext = TextView(this.context).apply { text = "Запрос к Deye Cloud..."; textSize = 13f; setTextColor(Color.GRAY); setPadding(0, 15, 0, 0); gravity = Gravity.CENTER; maxLines = 10 }
 
             statusCard.addView(statusTitle)
             statusCard.addView(statusSubtext)
             addView(statusCard)
 
-            lastUpdateText = TextView(this.context).apply {
-                text = "Обновлено: --:--:--"
-                textSize = 13f
-                setTextColor(Color.parseColor("#888888"))
-                setPadding(0, 30, 0, 40)
-            }
+            lastUpdateText = TextView(this.context).apply { text = "Обновлено: --:--:--"; textSize = 13f; setTextColor(Color.parseColor("#888888")); setPadding(0, 30, 0, 40) }
             addView(lastUpdateText)
 
             refreshBtn = Button(this.context).apply {
@@ -234,55 +149,46 @@ class MainActivity : Activity() {
         }
     }
 
-    private fun showSetup() {
-        setupLayout.visibility = View.VISIBLE
-        dashboardLayout.visibility = View.GONE
-    }
-
-    private fun showDashboard() {
-        setupLayout.visibility = View.GONE
-        dashboardLayout.visibility = View.VISIBLE
-        fetchStatus()
-    }
+    private fun showSetup() { setupLayout.visibility = View.VISIBLE; dashboardLayout.visibility = View.GONE }
+    private fun showDashboard() { setupLayout.visibility = View.GONE; dashboardLayout.visibility = View.VISIBLE; fetchStatus() }
 
     private fun fetchStatus() {
         statusTitle.text = "ЗАГРУЗКА..."
         statusCard.background = createCardBackground("#2D2B1E")
         statusTitle.setTextColor(Color.parseColor("#FBBF24"))
-        statusSubtext.text = "Запрос данных станции..."
+        statusSubtext.text = "Анализ сети объекта Ozenbash..."
 
         thread {
             val prefs = getSharedPreferences("deye_prefs", Context.MODE_PRIVATE)
-            val appId = (prefs.getString("app_id", "") ?: "").trim()
-            val appSecret = (prefs.getString("app_secret", "") ?: "").trim()
-            val email = (prefs.getString("email", "") ?: "").trim()
-            val password = (prefs.getString("password", "") ?: "").trim()
+            val appId = prefs.getString("app_id", "") ?: ""
+            val appSecret = prefs.getString("app_secret", "") ?: ""
+            val email = prefs.getString("email", "") ?: ""
+            val password = prefs.getString("password", "") ?: ""
 
-            var errorDetail = ""
-            val token = authenticate(appId, appSecret, email, password) { err -> errorDetail = err }
-            val result = if (token != null) checkStationStatus(token) { err -> errorDetail = err } else null
+            var errText = ""
+            val token = authenticate(appId, appSecret, email, password) { errText = it }
+            val result = if (token != null) checkTelemetry(appId, token) { errText = it } else null
 
             runOnUiThread {
                 val time = SimpleDateFormat("HH:mm:ss", Locale.getDefault()).format(Date())
                 lastUpdateText.text = "Обновлено в $time"
 
                 if (result != null) {
-                    if (result.isOnline) {
+                    if (result.isGridOn) {
                         statusCard.background = createCardBackground("#064E3B")
-                        statusTitle.text = "🟢 СЕТЬ В НОРМЕ"
+                        statusTitle.text = "🟢 ${result.titleText}"
                         statusTitle.setTextColor(Color.parseColor("#A7F3D0"))
-                        statusSubtext.text = result.details
                     } else {
                         statusCard.background = createCardBackground("#7F1D1D")
-                        statusTitle.text = "🔴 СТАЦИЯ ОФФЛАЙН"
+                        statusTitle.text = "🔴 ${result.titleText}"
                         statusTitle.setTextColor(Color.parseColor("#FECACA"))
-                        statusSubtext.text = result.details
                     }
+                    statusSubtext.text = result.details
                 } else {
                     statusCard.background = createCardBackground("#1F2937")
                     statusTitle.text = "⚠️ ОШИБКА СВЯЗИ"
                     statusTitle.setTextColor(Color.parseColor("#F3F4F6"))
-                    statusSubtext.text = if (errorDetail.isNotEmpty()) errorDetail else "Не удалось получить данные"
+                    statusSubtext.text = if (errText.isNotEmpty()) errText else "Не удалось прочитать телеметрию"
                 }
             }
         }
@@ -290,115 +196,124 @@ class MainActivity : Activity() {
 
     private fun authenticate(appId: String, appSecret: String, email: String, pass: String, onError: (String) -> Unit): String? {
         return try {
-            val sha256Password = pass.toSha256()
             val json = JsonObject().apply {
                 addProperty("appSecret", appSecret)
                 addProperty("email", email)
-                addProperty("password", sha256Password)
+                addProperty("password", pass.toSha256())
             }
-            val body = json.toString().toRequestBody("application/json".toMediaType())
             val request = Request.Builder()
                 .url("$baseUrl/account/token?appId=$appId")
-                .post(body)
+                .post(json.toString().toRequestBody("application/json".toMediaType()))
                 .addHeader("Accept", "application/json")
-                .addHeader("User-Agent", "Mozilla/5.0 (Android 13; Mobile)")
                 .build()
 
             client.newCall(request).execute().use { response ->
-                val responseData = response.body?.string() ?: ""
-                if (response.isSuccessful) {
-                    val jsonRes = JsonParser.parseString(responseData).asJsonObject
-                    val success = jsonRes.get("success")?.asBoolean ?: false
-                    val code = jsonRes.get("code")?.asString ?: ""
-                    if (success && code == "1000000") {
-                        jsonRes.get("accessToken")?.asString
-                    } else {
-                        val msg = jsonRes.get("msg")?.asString ?: "Ошибка авторизации"
-                        onError("Auth: $msg")
-                        null
-                    }
+                val res = JsonParser.parseString(response.body?.string() ?: "").asJsonObject
+                if (res.get("success")?.asBoolean == true) {
+                    res.get("accessToken")?.asString
                 } else {
-                    onError("Auth HTTP ${response.code}")
+                    onError("Auth: ${res.get("msg")?.asString}")
                     null
                 }
             }
         } catch (e: Exception) {
-            onError("Auth Crash: ${e.localizedMessage}")
+            onError("Auth error: ${e.message}")
             null
         }
     }
 
-    private fun checkStationStatus(token: String, onError: (String) -> Unit): CheckResult? {
+    private fun checkTelemetry(appId: String, token: String, onError: (String) -> Unit): CheckResult? {
         return try {
-            val json = JsonObject().apply {
-                addProperty("page", 1)
-                addProperty("size", 10)
-            }
-            val body = json.toString().toRequestBody("application/json".toMediaType())
-            val request = Request.Builder()
+            val listJson = JsonObject().apply { addProperty("page", 1); addProperty("size", 10) }
+            val listReq = Request.Builder()
                 .url("$baseUrl/station/list")
-                .post(body)
+                .post(listJson.toString().toRequestBody("application/json".toMediaType()))
                 .addHeader("Authorization", "bearer $token")
-                .addHeader("Accept", "application/json")
-                .addHeader("User-Agent", "Mozilla/5.0 (Android 13; Mobile)")
                 .build()
 
-            client.newCall(request).execute().use { response ->
-                val responseData = response.body?.string() ?: ""
+            var stationId: Long? = null
+            var stationName = "Ozenbash"
+
+            client.newCall(listReq).execute().use { response ->
+                val res = JsonParser.parseString(response.body?.string() ?: "").asJsonObject
+                val list = res.getAsJsonArray("stationList") ?: res.getAsJsonObject("data")?.getAsJsonArray("list")
+                if (list != null && list.size() > 0) {
+                    val st = list[0].asJsonObject
+                    stationId = st.get("id")?.asLong ?: st.get("stationId")?.asLong
+                    stationName = st.get("name")?.asString ?: "Ozenbash"
+                }
+            }
+
+            if (stationId == null) {
+                onError("Не найден ID объекта")
+                return null
+            }
+
+            val latestJson = JsonObject().apply { addProperty("stationId", stationId) }
+            val latestReq = Request.Builder()
+                .url("$baseUrl/station/latest?appId=$appId")
+                .post(latestJson.toString().toRequestBody("application/json".toMediaType()))
+                .addHeader("Authorization", "bearer $token")
+                .build()
+
+            client.newCall(latestReq).execute().use { response ->
+                val respStr = response.body?.string() ?: ""
                 if (response.isSuccessful) {
-                    val jsonRes = JsonParser.parseString(responseData).asJsonObject
-                    if (jsonRes.get("success")?.asBoolean == true) {
-                        val stationList = jsonRes.getAsJsonArray("stationList")
-                            ?: jsonRes.getAsJsonObject("data")?.getAsJsonArray("list")
-                            ?: jsonRes.getAsJsonArray("list")
+                    val res = JsonParser.parseString(respStr).asJsonObject
+                    val data = if (res.has("data")) res.getAsJsonObject("data") else res
 
-                        if (stationList != null && stationList.size() > 0) {
-                            val station = stationList[0].asJsonObject
-                            val status = station.get("status")?.asInt ?: 1
-                            val name = station.get("name")?.asString ?: "Станция Deye"
+                    val gridPower = findDouble(data, "gridPower", "pGrid", "acPower", "gridPowerW", "purchasedPower")
+                    val gridVoltage = findDouble(data, "gridVoltage", "vGrid", "acVoltage", "gridVolts")
+                    val gridStatus = data.get("gridStatus")?.asInt ?: data.get("gridState")?.asInt
 
-                            if (status == 1) {
-                                CheckResult(true, "Объект: $name\nСоединение с облаком стабильно")
-                            } else {
-                                CheckResult(false, "Объект: $name\nНет ответа от станции")
-                            }
+                    if (gridVoltage != null) {
+                        if (gridVoltage > 50.0) {
+                            CheckResult(true, "СЕТЬ В НОРМЕ", "Объект: $stationName\nНапряжение сети: ${gridVoltage.toInt()} В")
                         } else {
-                            CheckResult(true, "Инвертор и станция активны")
+                            CheckResult(false, "СЕТЬ ОТКЛЮЧЕНА", "Объект: $stationName\nНапряжение сети: 0 В (АКБ/Солнце)")
+                        }
+                    } else if (gridPower != null) {
+                        if (gridPower > 5.0 || gridPower < -5.0) {
+                            CheckResult(true, "СЕТЬ В НОРМЕ", "Объект: $stationName\nМощность сети: ${gridPower.toInt()} Вт")
+                        } else {
+                            CheckResult(false, "СЕТЬ ОТКЛЮЧЕНА", "Объект: $stationName\nСеть не потребляется (0 Вт)")
+                        }
+                    } else if (gridStatus != null) {
+                        if (gridStatus == 1) {
+                            CheckResult(true, "СЕТЬ В НОРМЕ", "Объект: $stationName\nСтатус сети: Подключена")
+                        } else {
+                            CheckResult(false, "СЕТЬ ОТКЛЮЧЕНА", "Объект: $stationName\nСтатус сети: Отключена")
                         }
                     } else {
-                        val msg = jsonRes.get("msg")?.asString ?: "Ошибка станции"
-                        onError("Stat Error: $msg")
-                        null
+                        val keys = data.keySet().take(8).joinToString(", ")
+                        CheckResult(false, "АНАЛИЗ ПАРАМЕТРОВ", "Объект: $stationName\nПараметры станции: $keys")
                     }
                 } else {
-                    onError("Stat HTTP ${response.code}")
+                    onError("Telemetry HTTP ${response.code}")
                     null
                 }
             }
         } catch (e: Exception) {
-            onError("Stat Crash: ${e.localizedMessage}")
+            onError("Crash: ${e.message}")
             null
         }
     }
 
-    private fun createCardBackground(colorHex: String): GradientDrawable {
-        return GradientDrawable().apply {
-            setColor(Color.parseColor(colorHex))
-            cornerRadius = 24f
+    private fun findDouble(obj: JsonObject, vararg keys: String): Double? {
+        for (k in keys) {
+            if (obj.has(k) && !obj.get(k).isJsonNull) {
+                return try { obj.get(k).asDouble } catch (e: Exception) { null }
+            }
         }
+        return null
     }
+
+    private fun createCardBackground(colorHex: String): GradientDrawable = GradientDrawable().apply { setColor(Color.parseColor(colorHex)); cornerRadius = 24f }
 
     private fun scheduleWorker() {
         val workRequest = PeriodicWorkRequestBuilder<DeyeCloudWorker>(15, TimeUnit.MINUTES).build()
-        WorkManager.getInstance(this).enqueueUniquePeriodicWork(
-            "DeyeCloudCheckWork",
-            ExistingPeriodicWorkPolicy.KEEP,
-            workRequest
-        )
+        WorkManager.getInstance(this).enqueueUniquePeriodicWork("DeyeCloudCheckWork", ExistingPeriodicWorkPolicy.KEEP, workRequest)
     }
 
-    private fun String.toSha256(): String {
-        val bytes = MessageDigest.getInstance("SHA-256").digest(this.toByteArray(Charsets.UTF_8))
-        return bytes.joinToString("") { "%02x".format(it) }
-    }
-}
+    private fun String.toSha256(): String = MessageDigest.getInstance("SHA-256").digest(this.toByteArray()).joinToString("") { "%02x".format(it) }
+}             
